@@ -3,7 +3,9 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/brettsmith212/amp-orchestrator-2/internal/worker"
 )
 
@@ -100,4 +102,65 @@ func (h *TaskHandler) StartTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
+}
+
+// StopTask stops a running task
+func (h *TaskHandler) StopTask(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "id")
+	if taskID == "" {
+		http.Error(w, "Task ID is required", http.StatusBadRequest)
+		return
+	}
+
+	err := h.manager.StopWorker(taskID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Task not found", http.StatusNotFound)
+			return
+		}
+		if strings.Contains(err.Error(), "not running") {
+			http.Error(w, "Task is not running", http.StatusConflict)
+			return
+		}
+		http.Error(w, "Failed to stop task", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// ContinueTask sends a message to a running task
+func (h *TaskHandler) ContinueTask(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "id")
+	if taskID == "" {
+		http.Error(w, "Task ID is required", http.StatusBadRequest)
+		return
+	}
+
+	var req StartTaskRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Message == "" {
+		http.Error(w, "Message is required", http.StatusBadRequest)
+		return
+	}
+
+	err := h.manager.ContinueWorker(taskID, req.Message)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Task not found", http.StatusNotFound)
+			return
+		}
+		if strings.Contains(err.Error(), "not running") {
+			http.Error(w, "Task is not running", http.StatusConflict)
+			return
+		}
+		http.Error(w, "Failed to continue task", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }

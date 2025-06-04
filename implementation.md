@@ -62,7 +62,7 @@
   - **Step Dependencies**: Steps 2, 3
   - **User Instructions**: `curl :8080/api/tasks` returns `[]`.
 
-- [ ] Step 6: Start task endpoint (`POST /api/tasks`)
+- [x] Step 6: Start task endpoint (`POST /api/tasks`)
 
   - **Task**: Parse `{message}` JSON, call `wm.StartWorker`, return created `TaskDTO`; write test using fake binary.
   - **Description**: Enables front-end “New Task” button; lays pattern for mutating endpoints.
@@ -72,7 +72,7 @@
   - **Step Dependencies**: Step 5
   - **User Instructions**: `curl -XPOST -d'{"message":"hi"}' :8080/api/tasks` returns task JSON.
 
-- [ ] Step 7: Stop and Continue endpoints
+- [x] Step 7: Stop and Continue endpoints
   - **Task**: Add `POST /api/tasks/{id}/stop` and `/continue` routes & tests; propagate 404 & 409 codes.
   - **Description**: Completes CRUD set needed by PromptBar actions.
   - **Files**:
