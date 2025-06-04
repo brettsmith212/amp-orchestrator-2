@@ -1,65 +1,60 @@
-# Amp Orchestrator
+# amp-orchestrator-2
 
-A Go application to orchestrate and manage multiple amp CLI worker instances.
-
-## Features
-
-- **Start Workers**: Create new amp threads and start worker processes
-- **Stop Workers**: Gracefully terminate worker processes
-- **Continue Workers**: Send messages to existing workers
-- **List Workers**: View all active and stopped workers
-- **Logging**: Each worker maintains its own log file
+A tool to manage and orchestrate multiple amp CLI worker instances.
 
 ## Installation
 
+### From Source
+
+1. Clone the repository:
 ```bash
-go mod tidy
-go build -o amp-orchestrator
+git clone https://github.com/brettsmith212/amp-orchestrator-2.git
+cd amp-orchestrator-2
 ```
+
+2. Build the binary:
+```bash
+go build -o ampd .
+```
+
+3. (Optional) Install globally:
+```bash
+go install .
+```
+
+### Prerequisites
+
+- Go 1.21 or higher
 
 ## Usage
 
 ### Start a new worker
 ```bash
-./amp-orchestrator start --message "Hello, start processing this task"
-# Output: Started worker a1b2c3d4 with thread T-bf92dd48-a4ef-48e9-bec2-c23988381844 (PID: 12345)
+./ampd start -m "Your initial message" [-l ./logs]
+```
+
+### List active workers
+```bash
+./ampd list
 ```
 
 ### Send message to existing worker
 ```bash
-./amp-orchestrator continue --worker a1b2c3d4 --message "Continue with this new task"
+./ampd continue -w WORKER_ID -m "Your message"
 ```
 
 ### Stop a worker
 ```bash
-./amp-orchestrator stop --worker a1b2c3d4
+./ampd stop -w WORKER_ID
 ```
 
-### List all workers
-```bash
-./amp-orchestrator list
-```
+## Commands
 
-## Architecture
+- `start` - Start a new amp worker instance
+- `stop` - Stop an amp worker instance  
+- `continue` - Send a message to an existing amp worker
+- `list` - List all active amp workers
 
-The orchestrator manages:
-- **Worker State**: Stored in `logs/workers.json`
-- **Log Files**: Each worker gets `logs/worker-{id}.log`
-- **Process Management**: Tracks PIDs for clean shutdown
-- **Thread Management**: Maps workers to amp thread IDs
+## Logs
 
-## Configuration
-
-- `--log-dir`: Directory for log files (default: `./logs`)
-- Assumes `amp` binary is in PATH
-
-## File Structure
-
-```
-├── main.go          # CLI interface
-├── worker.go        # Worker management logic
-├── go.mod          # Go module dependencies
-└── logs/           # Generated log directory
-    ├── workers.json # Worker state storage
-    └── worker-*.log # Individual worker logs
-```
+Worker logs are stored in the `./logs` directory by default. You can specify a different directory using the `-l` flag with the `start` command.
