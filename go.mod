@@ -1,4 +1,4 @@
-module amp-orchestrator
+module github.com/brettsmith212/amp-orchestrator-2
 
 go 1.21
 
