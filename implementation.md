@@ -126,66 +126,60 @@
   - **Step Dependencies**: Steps 3, 5
   - **User Instructions**: `curl :8080/api/tasks/xyz/logs?tail=20`.
 
-## Authentication & Security
+## Authentication
 
-- [ ] Step 12: Add JWT middleware
+- [ ] Step 12: Implement in-memory user store and /auth/login & /auth/refresh
+  - **Task**: bcrypt-hash demo users, JWT (HS256) issuance, refresh-token rotation.
+  - **Description**: Gives UI a real login flow; later we can swap in DB.
+  - **Files** (≤7): auth handlers, tests, middleware wiring, user fixture JSON.
+  - **Step Dependencies**: Config, router.
 
-  - **Task**: `internal/api/middleware/auth.go` verifies Bearer token (HS256 secret env); unit test.
-  - **Description**: Protects all endpoints except `/healthz`.
-  - **Files**:
-    - `internal/api/middleware/auth.go`
-    - `internal/api/middleware/auth_test.go`
-  - **Step Dependencies**: Steps 2, 4
-  - **User Instructions**: Requests without token get 401.
+## Standard response & error envelope
 
-- [ ] Step 13: Enable CORS and security headers
-  - **Task**: Use `github.com/go-chi/cors` and add `X-Content-Type-Options` header middleware.
-  - **Description**: Allows front-end dev server; hardens responses.
-  - **Files**:
-    - `internal/api/middleware/cors.go`
-    - update router wiring
-  - **Step Dependencies**: Step 2
-  - **User Instructions**: Front-end running on :5173 can call API.
+- [ ] Step 13: Add response helper and error middleware
+  - **Task**: `respond.JSON(w, payload)` and `errors.Wrap(...)` mapping to contract schema.
+  - **Description**: Ensures every handler conforms without copy-pasting.
+  - **Files**: pkg/response, pkg/apierr, middleware/error.go, tests.
 
-## Documentation & Tooling
+## Pagination & advanced task list
 
-- [ ] Step 14: Generate OpenAPI spec
-  - **Task**: Integrate `swaggo/swag` comments on handlers and `make docs` target.
-  - **Description**: Provides contract for front-end & future SDKs.
-  - **Files**:
-    - `docs/swagger/*`: generated
-    - `Makefile`: `swagger` target
-  - **Step Dependencies**: Steps 5–11
-  - **User Instructions**: `make swagger` produces `docs/swagger/index.html`.
+- [ ] Step 14: Implement cursor pagination, filtering, sorting on GET /api/tasks
+  - **Task**: query-parser util, update handler, unit tests incl. edge cases.
+  - **Description**: Matches UI contract exactly.
 
-## CI & Containerisation
+## Extended Task actions
 
-- [ ] Step 15: Add GitHub Actions workflow for lint & tests
+- [ ] Step 15: Add interrupt / abort / retry endpoints and state machine guard
+  - **Task**: define `AllowedTransitions`, extend WorkerManager to persist `status`.
+  - **Description**: Covers PromptBar & retry workflows.
 
-  - **Task**: `.github/workflows/ci.yml` running `go vet`, `go test ./...`.
-  - **Description**: Maintains code quality automatically.
-  - **Files**:
-    - `.github/workflows/ci.yml`
-  - **Step Dependencies**: Steps 1–13
-  - **User Instructions**: Push triggers green build.
+## PATCH, DELETE and Git operations
 
-- [ ] Step 16: Create Dockerfile and local compose
-  - **Task**: Multi-stage Dockerfile for `ampd`; minimal `docker-compose.yml` with port mapping.
-  - **Description**: Ready-to-deploy container image for staging/prod.
-  - **Files**:
-    - `Dockerfile`
-    - `docker-compose.yml`
-    - `Makefile`: `docker-build` target
-  - **Step Dependencies**: Steps 1–13
-  - **User Instructions**: `docker compose up` starts service on 8080.
+- [ ] Step 16: Add PATCH /api/tasks/:id, DELETE /api/tasks/:id, merge/delete-branch/create-pr stubs
+  - **Task**: accept JSON patch, update metadata; Git stubs return 202 + TODO.
+  - **Description**: UI buttons won’t break even before Git integration is ready.
 
-## Final Polish
+## Thread & message endpoints
 
-- [ ] Step 17: Add graceful shutdown & logging
-  - **Task**: Use `context` + `http.Server` shutdown; add `zap` logger.
-  - **Description**: Production-grade observability and SIGTERM handling.
-  - **Files**:
-    - `cmd/ampd/main.go`: wrap server with shutdown
-    - `pkg/log/logger.go`: `zap` setup
-  - **Step Dependencies**: Steps 1–13
-  - **User Instructions**: `CTRL+C` waits for active requests, logs nicely.
+- [ ] Step 17: Store thread messages (JSONL per task) and expose /thread endpoint
+  - **Task**: append from WorkerManager, paginate, deliver over WS (`thread_message`).
+
+## WebSocket protocol enrichment
+
+- [ ] Step 18: Implement event type switching, ping/pong, heartbeat timeouts
+  - **Task**: hub routes by `msg.Type`, responds with `pong`, closes idle conns.
+
+## Rate limiting & CORS hardening
+
+- [ ] Step 19: Integrate `chi/httprate`, add rate-limit headers, tighten CORS
+  - **Task**: env-driven limits; tests for header presence.
+
+## Enhanced /health
+
+- [ ] Step 20: Expand /health to report version, uptime, and sub-service checks
+  - **Task**: ping Redis (optional), git binary, websocket hub stats.
+
+## Docs & code-gen alignment
+
+- [ ] Step 21: Update Swagger comments to reflect new routes & wrapper schema
+  - **Task**: regenerate OpenAPI, commit docs.

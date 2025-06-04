@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,4 +98,51 @@ func TestListTasks_WithWorkers(t *testing.T) {
 	assert.Equal(t, "T-456", tasks[1].ThreadID)
 	assert.Equal(t, "stopped", tasks[1].Status)
 	assert.Equal(t, time.Date(2023, 1, 1, 13, 0, 0, 0, time.UTC), tasks[1].Started)
+}
+
+func TestStartTask_InvalidJSON(t *testing.T) {
+	tempDir := t.TempDir()
+	manager := worker.NewManager(tempDir)
+	handler := NewTaskHandler(manager)
+	
+	req := httptest.NewRequest("POST", "/api/tasks", strings.NewReader("invalid json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	
+	handler.StartTask(w, req)
+	
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Invalid JSON request body")
+}
+
+func TestStartTask_EmptyMessage(t *testing.T) {
+	tempDir := t.TempDir()
+	manager := worker.NewManager(tempDir)
+	handler := NewTaskHandler(manager)
+	
+	reqBody := `{"message":""}`
+	req := httptest.NewRequest("POST", "/api/tasks", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	
+	handler.StartTask(w, req)
+	
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Message is required")
+}
+
+func TestStartTask_MissingMessage(t *testing.T) {
+	tempDir := t.TempDir()
+	manager := worker.NewManager(tempDir)
+	handler := NewTaskHandler(manager)
+	
+	reqBody := `{}`
+	req := httptest.NewRequest("POST", "/api/tasks", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	
+	handler.StartTask(w, req)
+	
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "Message is required")
 }

@@ -10,3 +10,8 @@ type TaskDTO struct {
 	Started  time.Time `json:"started"`
 	LogFile  string    `json:"log_file"`
 }
+
+// StartTaskRequest represents the request body for starting a task
+type StartTaskRequest struct {
+	Message string `json:"message"`
+}

@@ -45,3 +45,59 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+// StartTask creates and starts a new task
+func (h *TaskHandler) StartTask(w http.ResponseWriter, r *http.Request) {
+	var req StartTaskRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Message == "" {
+		http.Error(w, "Message is required", http.StatusBadRequest)
+		return
+	}
+
+	// Start the worker
+	if err := h.manager.StartWorker(req.Message); err != nil {
+		http.Error(w, "Failed to start task", http.StatusInternalServerError)
+		return
+	}
+
+	// Get the latest workers to find the one we just created
+	workers, err := h.manager.ListWorkers()
+	if err != nil {
+		http.Error(w, "Failed to retrieve created task", http.StatusInternalServerError)
+		return
+	}
+
+	// Find the most recently started worker (the one we just created)
+	var latestWorker *worker.Worker
+	for _, w := range workers {
+		if latestWorker == nil || w.Started.After(latestWorker.Started) {
+			latestWorker = w
+		}
+	}
+
+	if latestWorker == nil {
+		http.Error(w, "Failed to find created task", http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to DTO and return
+	task := TaskDTO{
+		ID:       latestWorker.ID,
+		ThreadID: latestWorker.ThreadID,
+		Status:   latestWorker.Status,
+		Started:  latestWorker.Started,
+		LogFile:  latestWorker.LogFile,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(task); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}

@@ -21,6 +21,7 @@ func NewRouter(manager *worker.Manager) *chi.Mux {
 	taskHandler := NewTaskHandler(manager)
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/tasks", taskHandler.ListTasks)
+		r.Post("/tasks", taskHandler.StartTask)
 	})
 	
 	return r
