@@ -39,7 +39,7 @@
 
 ## Configuration Layer
 
-- [ ] Step 4: Introduce config handling
+- [x] Step 4: Introduce config handling
   - **Task**: Add `pkg/config/config.go` that reads env vars (PORT, AMP_BINARY, LOG_DIR).
   - **Description**: Centralises configuration; makes tests deterministic by overriding env.
   - **Files**:
