@@ -117,7 +117,7 @@
   - **Step Dependencies**: Step 9
   - **User Instructions**: receive `"type":"log"` messages over WS.
 
-- [ ] Step 11: Historical log endpoint (`GET /api/tasks/{id}/logs`)
+- [x] Step 11: Historical log endpoint (`GET /api/tasks/{id}/logs`)
   - **Task**: Serve entire log file or tail `n` lines; stream as `text/plain`.
   - **Description**: Allows front-end to load existing backlog before websocket stream.
   - **Files**:
@@ -126,58 +126,58 @@
   - **Step Dependencies**: Steps 3, 5
   - **User Instructions**: `curl :8080/api/tasks/xyz/logs?tail=20`.
 
-## Authentication
-
-- [ ] Step 12: Implement in-memory user store and /auth/login & /auth/refresh
-  - **Task**: bcrypt-hash demo users, JWT (HS256) issuance, refresh-token rotation.
-  - **Description**: Gives UI a real login flow; later we can swap in DB.
-  - **Files** (≤7): auth handlers, tests, middleware wiring, user fixture JSON.
-  - **Step Dependencies**: Config, router.
-
 ## Standard response & error envelope
 
-- [ ] Step 13: Add response helper and error middleware
+- [ ] Step 12: Add response helper and error middleware
   - **Task**: `respond.JSON(w, payload)` and `errors.Wrap(...)` mapping to contract schema.
   - **Description**: Ensures every handler conforms without copy-pasting.
   - **Files**: pkg/response, pkg/apierr, middleware/error.go, tests.
 
 ## Pagination & advanced task list
 
-- [ ] Step 14: Implement cursor pagination, filtering, sorting on GET /api/tasks
+- [ ] Step 13: Implement cursor pagination, filtering, sorting on GET /api/tasks
   - **Task**: query-parser util, update handler, unit tests incl. edge cases.
   - **Description**: Matches UI contract exactly.
 
 ## Extended Task actions
 
-- [ ] Step 15: Add interrupt / abort / retry endpoints and state machine guard
+- [ ] Step 14: Add interrupt / abort / retry endpoints and state machine guard
   - **Task**: define `AllowedTransitions`, extend WorkerManager to persist `status`.
   - **Description**: Covers PromptBar & retry workflows.
 
 ## PATCH, DELETE and Git operations
 
-- [ ] Step 16: Add PATCH /api/tasks/:id, DELETE /api/tasks/:id, merge/delete-branch/create-pr stubs
+- [ ] Step 15: Add PATCH /api/tasks/:id, DELETE /api/tasks/:id, merge/delete-branch/create-pr stubs
   - **Task**: accept JSON patch, update metadata; Git stubs return 202 + TODO.
   - **Description**: UI buttons won’t break even before Git integration is ready.
 
 ## Thread & message endpoints
 
-- [ ] Step 17: Store thread messages (JSONL per task) and expose /thread endpoint
+- [ ] Step 16: Store thread messages (JSONL per task) and expose /thread endpoint
   - **Task**: append from WorkerManager, paginate, deliver over WS (`thread_message`).
 
 ## WebSocket protocol enrichment
 
-- [ ] Step 18: Implement event type switching, ping/pong, heartbeat timeouts
+- [ ] Step 17: Implement event type switching, ping/pong, heartbeat timeouts
   - **Task**: hub routes by `msg.Type`, responds with `pong`, closes idle conns.
 
 ## Rate limiting & CORS hardening
 
-- [ ] Step 19: Integrate `chi/httprate`, add rate-limit headers, tighten CORS
+- [ ] Step 18: Integrate `chi/httprate`, add rate-limit headers, tighten CORS
   - **Task**: env-driven limits; tests for header presence.
 
 ## Enhanced /health
 
-- [ ] Step 20: Expand /health to report version, uptime, and sub-service checks
+- [ ] Step 19: Expand /health to report version, uptime, and sub-service checks
   - **Task**: ping Redis (optional), git binary, websocket hub stats.
+
+## Authentication
+
+- [ ] Step 20: Implement in-memory user store and /auth/login & /auth/refresh
+  - **Task**: bcrypt-hash demo users, JWT (HS256) issuance, refresh-token rotation.
+  - **Description**: Gives UI a real login flow; later we can swap in DB.
+  - **Files** (≤7): auth handlers, tests, middleware wiring, user fixture JSON.
+  - **Step Dependencies**: Config, router.
 
 ## Docs & code-gen alignment
 

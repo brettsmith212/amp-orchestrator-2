@@ -17,6 +17,9 @@ func NewRouter(taskHandler *TaskHandler, h *hub.Hub) *chi.Mux {
 	// Health check endpoint
 	r.Get("/healthz", HealthHandler)
 	
+	// Create log handler using the same manager from task handler
+	logHandler := NewLogHandler(taskHandler.manager)
+	
 	// WebSocket handler
 	wsHandler := NewWSHandler(h)
 	
@@ -25,6 +28,7 @@ func NewRouter(taskHandler *TaskHandler, h *hub.Hub) *chi.Mux {
 		r.Post("/tasks", taskHandler.StartTask)
 		r.Post("/tasks/{id}/stop", taskHandler.StopTask)
 		r.Post("/tasks/{id}/continue", taskHandler.ContinueTask)
+		r.Get("/tasks/{id}/logs", logHandler.GetTaskLogs)
 		r.Get("/ws", wsHandler.ServeWS)
 	})
 	

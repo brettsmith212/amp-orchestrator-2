@@ -353,3 +353,12 @@ func (m *Manager) stopLogTailer(workerID string) {
 		delete(m.tailers, workerID)
 	}
 }
+
+// SaveWorkersForTest is a test helper to save workers to a specific state file
+func (m *Manager) SaveWorkersForTest(workers map[string]*Worker, stateFile string) error {
+	originalStateFile := m.stateFile
+	m.stateFile = stateFile
+	defer func() { m.stateFile = originalStateFile }()
+	
+	return m.saveWorkers(workers)
+}
