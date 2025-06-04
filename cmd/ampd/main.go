@@ -22,6 +22,12 @@ func main() {
 	h := hub.NewHub()
 	go h.Run()
 	
+	// Create task handler to handle broadcasting
+	taskHandler := api.NewTaskHandler(manager, h)
+	
+	// Set up log callback to broadcast log events
+	manager.SetLogCallback(taskHandler.BroadcastLogEvent)
+	
 	// Set up worker exit callback to broadcast task updates
 	manager.SetExitCallback(func(workerID string) {
 		// Get the updated worker and broadcast its status
@@ -62,7 +68,7 @@ func main() {
 		}
 	})
 	
-	router := api.NewRouter(manager, h)
+	router := api.NewRouter(taskHandler, h)
 	
 	addr := ":" + cfg.Port
 	log.Printf("Starting ampd server on %s", addr)

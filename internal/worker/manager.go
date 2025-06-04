@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,6 +21,9 @@ type Manager struct {
 	stateFile     string
 	ampBinaryPath string
 	onWorkerExit  func(workerID string) // Callback when worker exits
+	onLogLine     func(LogLine)         // Callback for log lines
+	tailers       map[string]*LogTailer // Active log tailers by worker ID
+	tailersMu     sync.RWMutex          // Protects tailers map
 }
 
 func NewManager(logDir string) *Manager {
@@ -34,12 +39,19 @@ func NewManager(logDir string) *Manager {
 		stateFile:     filepath.Join(logDir, "workers.json"),
 		ampBinaryPath: "amp", // Assume amp is in PATH
 		onWorkerExit:  nil,   // Will be set via SetExitCallback
+		onLogLine:     nil,   // Will be set via SetLogCallback
+		tailers:       make(map[string]*LogTailer),
 	}
 }
 
 // SetExitCallback sets the callback function to be called when a worker exits
 func (m *Manager) SetExitCallback(callback func(workerID string)) {
 	m.onWorkerExit = callback
+}
+
+// SetLogCallback sets the callback function to be called for each log line
+func (m *Manager) SetLogCallback(callback func(LogLine)) {
+	m.onLogLine = callback
 }
 
 func (m *Manager) StartWorker(message string) error {
@@ -96,8 +108,21 @@ func (m *Manager) StartWorker(message string) error {
 		return fmt.Errorf("failed to save worker state: %w", err)
 	}
 
+	// Start log tailer if callback is set
+	if m.onLogLine != nil {
+		tailer := NewLogTailer(logFile, worker.ID, m.onLogLine)
+		if err := tailer.Start(context.Background()); err == nil {
+			m.tailersMu.Lock()
+			m.tailers[worker.ID] = tailer
+			m.tailersMu.Unlock()
+		}
+	}
+
 	// Monitor the process in the background
 	m.MonitorWorkerExit(worker.ID, cmd, func(workerID string) {
+		// Stop log tailer when worker exits
+		m.stopLogTailer(workerID)
+		
 		// Call the exit callback if set
 		if m.onWorkerExit != nil {
 			m.onWorkerExit(workerID)
@@ -147,6 +172,9 @@ func (m *Manager) StopWorker(workerID string) error {
 
 	// Also try to kill any remaining amp processes for this thread
 	m.killAmpProcesses(worker.ThreadID)
+
+	// Stop log tailer
+	m.stopLogTailer(workerID)
 
 	// Update worker status
 	worker.Status = "stopped"
@@ -313,4 +341,15 @@ func (m *Manager) killAmpProcesses(threadID string) {
 	// Use pkill to find and kill any amp processes for this thread
 	cmd := exec.Command("pkill", "-f", fmt.Sprintf("amp threads continue %s", threadID))
 	cmd.Run() // Ignore errors since the process might already be dead
+}
+
+// stopLogTailer stops the log tailer for a worker
+func (m *Manager) stopLogTailer(workerID string) {
+	m.tailersMu.Lock()
+	defer m.tailersMu.Unlock()
+	
+	if tailer, exists := m.tailers[workerID]; exists {
+		tailer.Stop()
+		delete(m.tailers, workerID)
+	}
 }

@@ -5,10 +5,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/brettsmith212/amp-orchestrator-2/internal/hub"
-	"github.com/brettsmith212/amp-orchestrator-2/internal/worker"
 )
 
-func NewRouter(manager *worker.Manager, h *hub.Hub) *chi.Mux {
+func NewRouter(taskHandler *TaskHandler, h *hub.Hub) *chi.Mux {
 	r := chi.NewRouter()
 	
 	// Add basic middleware
@@ -18,8 +17,7 @@ func NewRouter(manager *worker.Manager, h *hub.Hub) *chi.Mux {
 	// Health check endpoint
 	r.Get("/healthz", HealthHandler)
 	
-	// Task handler
-	taskHandler := NewTaskHandler(manager, h)
+	// WebSocket handler
 	wsHandler := NewWSHandler(h)
 	
 	r.Route("/api", func(r chi.Router) {

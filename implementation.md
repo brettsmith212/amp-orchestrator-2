@@ -107,7 +107,7 @@
 
 ## Log Streaming
 
-- [ ] Step 10: Tail logs and broadcast `log` events
+- [x] Step 10: Tail logs and broadcast `log` events
 
   - **Task**: Add `internal/worker/tailer.go` to follow log file line-by-line; integrate with hub.
   - **Description**: Powers ThreadView and LogsView real-time output.

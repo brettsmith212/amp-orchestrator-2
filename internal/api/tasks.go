@@ -68,6 +68,30 @@ func (h *TaskHandler) broadcastTaskAfterStop(taskID string) {
 	}
 }
 
+// BroadcastLogEvent sends a log event over WebSocket
+func (h *TaskHandler) BroadcastLogEvent(logLine worker.LogLine) {
+	if h.hub == nil {
+		return
+	}
+
+	event := LogEvent{
+		Type: "log",
+		Data: LogData{
+			WorkerID:  logLine.WorkerID,
+			Timestamp: logLine.Timestamp,
+			Content:   logLine.Content,
+		},
+	}
+
+	eventJSON, err := json.Marshal(event)
+	if err != nil {
+		// Log error but don't fail
+		return
+	}
+
+	h.hub.Broadcast(eventJSON)
+}
+
 // ListTasks returns all tasks as JSON
 func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	workers, err := h.manager.ListWorkers()

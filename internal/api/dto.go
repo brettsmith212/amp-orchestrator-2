@@ -27,3 +27,16 @@ type TaskUpdateEvent struct {
 	Type string  `json:"type"` // "task-update"
 	Data TaskDTO `json:"data"`
 }
+
+// LogEvent represents a log line event
+type LogEvent struct {
+	Type string `json:"type"` // "log"
+	Data LogData `json:"data"`
+}
+
+// LogData represents log line data
+type LogData struct {
+	WorkerID  string    `json:"worker_id"`
+	Timestamp time.Time `json:"timestamp"`
+	Content   string    `json:"content"`
+}
