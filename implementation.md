@@ -83,7 +83,7 @@
 
 ## WebSocket Hub
 
-- [ ] Step 8: Implement hub skeleton and `/api/ws` endpoint
+- [x] Step 8: Implement hub skeleton and `/api/ws` endpoint
 
   - **Task**: Create `internal/hub/hub.go` managing clients & broadcast; handler upgrades to WS.
   - **Description**: Foundation for realtime updates.
