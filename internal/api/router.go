@@ -3,9 +3,11 @@ package api
 import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/brettsmith212/amp-orchestrator-2/internal/worker"
 )
 
-func NewRouter() *chi.Mux {
+func NewRouter(manager *worker.Manager) *chi.Mux {
 	r := chi.NewRouter()
 	
 	// Add basic middleware
@@ -14,6 +16,12 @@ func NewRouter() *chi.Mux {
 	
 	// Health check endpoint
 	r.Get("/healthz", HealthHandler)
+	
+	// Task handler
+	taskHandler := NewTaskHandler(manager)
+	r.Route("/api", func(r chi.Router) {
+		r.Get("/tasks", taskHandler.ListTasks)
+	})
 	
 	return r
 }

@@ -51,7 +51,7 @@
 
 ## REST API – Tasks
 
-- [ ] Step 5: List tasks endpoint (`GET /api/tasks`)
+- [x] Step 5: List tasks endpoint (`GET /api/tasks`)
 
   - **Task**: Add handler that loads workers from `WorkerManager` and returns JSON slice. Include test.
   - **Description**: First “real” business route used by dashboard.
