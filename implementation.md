@@ -27,7 +27,7 @@
 
 ## Worker Manager Extraction
 
-- [ ] Step 3: Refactor existing WorkerManager into `internal/worker`
+- [x] Step 3: Refactor existing WorkerManager into `internal/worker`
   - **Task**: Move `worker.go` into dedicated package, split into `manager.go` & `types.go`, and add basic unit tests for `StartWorker` (mocked).
   - **Description**: Isolates core process logic for reuse by API layer.
   - **Files**:

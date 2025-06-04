@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/brettsmith212/amp-orchestrator-2/internal/worker"
 )
 
 func main() {
@@ -34,7 +36,7 @@ func startCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start a new amp worker instance",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			wm := NewWorkerManager(logDir)
+			wm := worker.NewManager(logDir)
 			return wm.StartWorker(message)
 		},
 	}
@@ -53,7 +55,7 @@ func stopCmd() *cobra.Command {
 		Use:   "stop",
 		Short: "Stop an amp worker instance",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			wm := NewWorkerManager("")
+			wm := worker.NewManager("")
 			return wm.StopWorker(workerID)
 		},
 	}
@@ -72,7 +74,7 @@ func continueCmd() *cobra.Command {
 		Use:   "continue",
 		Short: "Send a message to an existing amp worker",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			wm := NewWorkerManager("")
+			wm := worker.NewManager("")
 			return wm.ContinueWorker(workerID, message)
 		},
 	}
@@ -90,8 +92,32 @@ func listCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all active amp workers",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			wm := NewWorkerManager("")
-			return wm.ListWorkers()
+			wm := worker.NewManager("")
+			workers, err := wm.ListWorkers()
+			if err != nil {
+				return err
+			}
+
+			if len(workers) == 0 {
+				fmt.Println("No workers found")
+				return nil
+			}
+
+			fmt.Printf("%-10s %-12s %-8s %-10s %-20s %s\n", "ID", "THREAD", "PID", "STATUS", "STARTED", "LOG")
+			fmt.Println(strings.Repeat("-", 90))
+
+			for _, w := range workers {
+				fmt.Printf("%-10s %-12s %-8d %-10s %-20s %s\n",
+					w.ID,
+					w.ThreadID[:12]+"...",
+					w.PID,
+					w.Status,
+					w.Started.Format("2006-01-02 15:04:05"),
+					w.LogFile,
+				)
+			}
+
+			return nil
 		},
 	}
 }
