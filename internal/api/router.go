@@ -19,7 +19,7 @@ func NewRouter(manager *worker.Manager, h *hub.Hub) *chi.Mux {
 	r.Get("/healthz", HealthHandler)
 	
 	// Task handler
-	taskHandler := NewTaskHandler(manager)
+	taskHandler := NewTaskHandler(manager, h)
 	wsHandler := NewWSHandler(h)
 	
 	r.Route("/api", func(r chi.Router) {

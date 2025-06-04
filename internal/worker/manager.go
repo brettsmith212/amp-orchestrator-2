@@ -18,6 +18,7 @@ type Manager struct {
 	logDir        string
 	stateFile     string
 	ampBinaryPath string
+	onWorkerExit  func(workerID string) // Callback when worker exits
 }
 
 func NewManager(logDir string) *Manager {
@@ -32,7 +33,13 @@ func NewManager(logDir string) *Manager {
 		logDir:        logDir,
 		stateFile:     filepath.Join(logDir, "workers.json"),
 		ampBinaryPath: "amp", // Assume amp is in PATH
+		onWorkerExit:  nil,   // Will be set via SetExitCallback
 	}
+}
+
+// SetExitCallback sets the callback function to be called when a worker exits
+func (m *Manager) SetExitCallback(callback func(workerID string)) {
+	m.onWorkerExit = callback
 }
 
 func (m *Manager) StartWorker(message string) error {
@@ -90,7 +97,18 @@ func (m *Manager) StartWorker(message string) error {
 	}
 
 	// Monitor the process in the background
-	go m.monitorWorker(worker, cmd, logFileHandle)
+	m.MonitorWorkerExit(worker.ID, cmd, func(workerID string) {
+		// Call the exit callback if set
+		if m.onWorkerExit != nil {
+			m.onWorkerExit(workerID)
+		}
+	})
+
+	// Close log file after starting monitoring
+	go func() {
+		defer logFileHandle.Close()
+		cmd.Wait()
+	}()
 
 	return nil
 }
@@ -278,23 +296,7 @@ func (m *Manager) saveWorker(worker *Worker) error {
 	return m.saveWorkers(workers)
 }
 
-func (m *Manager) monitorWorker(worker *Worker, cmd *exec.Cmd, logFile *os.File) {
-	defer logFile.Close()
 
-	// Wait for the process to complete
-	cmd.Wait()
-
-	// Update worker status
-	workers, loadErr := m.loadWorkers()
-	if loadErr != nil {
-		return
-	}
-
-	if w, exists := workers[worker.ID]; exists {
-		w.Status = "stopped"
-		m.saveWorkers(workers)
-	}
-}
 
 func (m *Manager) checkProcessStatus(worker *Worker) bool {
 	process, err := os.FindProcess(worker.PID)

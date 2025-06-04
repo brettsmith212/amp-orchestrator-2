@@ -15,3 +15,15 @@ type TaskDTO struct {
 type StartTaskRequest struct {
 	Message string `json:"message"`
 }
+
+// WebSocketEvent represents events sent over WebSocket
+type WebSocketEvent struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
+}
+
+// TaskUpdateEvent represents a task update event
+type TaskUpdateEvent struct {
+	Type string  `json:"type"` // "task-update"
+	Data TaskDTO `json:"data"`
+}

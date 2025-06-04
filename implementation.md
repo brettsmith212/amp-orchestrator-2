@@ -95,7 +95,7 @@
   - **Step Dependencies**: Steps 2, 4
   - **User Instructions**: `wscat -c ws://localhost:8080/api/ws` connects with no error.
 
-- [ ] Step 9: Emit `task-update` events
+- [x] Step 9: Emit `task-update` events
   - **Task**: Modify task handlers to send `TaskDTO` over hub after state changes; include list watcher goroutine that pushes status when worker exits.
   - **Description**: Enables live cards & status pills to refresh.
   - **Files**:

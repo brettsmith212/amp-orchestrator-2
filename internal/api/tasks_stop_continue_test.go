@@ -15,13 +15,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/brettsmith212/amp-orchestrator-2/internal/hub"
 	"github.com/brettsmith212/amp-orchestrator-2/internal/worker"
 )
 
 func TestStopTask_Success(t *testing.T) {
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 
 	// Create a mock worker in the state file - use fake PID to avoid killing real process
 	stateFile := filepath.Join(tempDir, "workers.json")
@@ -59,7 +61,8 @@ func TestStopTask_Success(t *testing.T) {
 func TestStopTask_NotFound(t *testing.T) {
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 
 	req := httptest.NewRequest("POST", "/api/tasks/nonexistent/stop", nil)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
@@ -79,7 +82,8 @@ func TestStopTask_NotFound(t *testing.T) {
 func TestStopTask_NotRunning(t *testing.T) {
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 
 	// Create a mock stopped worker
 	stateFile := filepath.Join(tempDir, "workers.json")
@@ -116,7 +120,8 @@ func TestStopTask_NotRunning(t *testing.T) {
 func TestContinueTask_NotFound(t *testing.T) {
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 
 	reqBody := `{"message":"test"}`
 	req := httptest.NewRequest("POST", "/api/tasks/nonexistent/continue", strings.NewReader(reqBody))
@@ -138,7 +143,8 @@ func TestContinueTask_NotFound(t *testing.T) {
 func TestContinueTask_InvalidJSON(t *testing.T) {
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 
 	req := httptest.NewRequest("POST", "/api/tasks/test123/continue", strings.NewReader("invalid json"))
 	req.Header.Set("Content-Type", "application/json")
@@ -159,7 +165,8 @@ func TestContinueTask_InvalidJSON(t *testing.T) {
 func TestContinueTask_EmptyMessage(t *testing.T) {
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 
 	reqBody := `{"message":""}`
 	req := httptest.NewRequest("POST", "/api/tasks/test123/continue", strings.NewReader(reqBody))

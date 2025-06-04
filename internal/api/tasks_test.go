@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/brettsmith212/amp-orchestrator-2/internal/hub"
 	"github.com/brettsmith212/amp-orchestrator-2/internal/worker"
 )
 
@@ -20,7 +21,8 @@ func TestListTasks_EmptyManager(t *testing.T) {
 	// Create temp directory for test
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 
 	req := httptest.NewRequest("GET", "/api/tasks", nil)
 	w := httptest.NewRecorder()
@@ -40,7 +42,8 @@ func TestListTasks_WithWorkers(t *testing.T) {
 	// Create temp directory for test
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 
 	// Create mock state file with some workers
 	stateFile := filepath.Join(tempDir, "workers.json")
@@ -103,7 +106,8 @@ func TestListTasks_WithWorkers(t *testing.T) {
 func TestStartTask_InvalidJSON(t *testing.T) {
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 	
 	req := httptest.NewRequest("POST", "/api/tasks", strings.NewReader("invalid json"))
 	req.Header.Set("Content-Type", "application/json")
@@ -118,7 +122,8 @@ func TestStartTask_InvalidJSON(t *testing.T) {
 func TestStartTask_EmptyMessage(t *testing.T) {
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 	
 	reqBody := `{"message":""}`
 	req := httptest.NewRequest("POST", "/api/tasks", strings.NewReader(reqBody))
@@ -134,7 +139,8 @@ func TestStartTask_EmptyMessage(t *testing.T) {
 func TestStartTask_MissingMessage(t *testing.T) {
 	tempDir := t.TempDir()
 	manager := worker.NewManager(tempDir)
-	handler := NewTaskHandler(manager)
+	h := hub.NewHub()
+	handler := NewTaskHandler(manager, h)
 	
 	reqBody := `{}`
 	req := httptest.NewRequest("POST", "/api/tasks", strings.NewReader(reqBody))

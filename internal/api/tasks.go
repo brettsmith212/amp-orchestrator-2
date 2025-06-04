@@ -6,18 +6,65 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/brettsmith212/amp-orchestrator-2/internal/hub"
 	"github.com/brettsmith212/amp-orchestrator-2/internal/worker"
 )
 
 // TaskHandler handles task-related API requests
 type TaskHandler struct {
 	manager *worker.Manager
+	hub     *hub.Hub
 }
 
 // NewTaskHandler creates a new task handler
-func NewTaskHandler(manager *worker.Manager) *TaskHandler {
+func NewTaskHandler(manager *worker.Manager, h *hub.Hub) *TaskHandler {
 	return &TaskHandler{
 		manager: manager,
+		hub:     h,
+	}
+}
+
+// broadcastTaskUpdate sends a task-update event over WebSocket
+func (h *TaskHandler) broadcastTaskUpdate(task TaskDTO) {
+	if h.hub == nil {
+		return
+	}
+
+	event := TaskUpdateEvent{
+		Type: "task-update",
+		Data: task,
+	}
+
+	eventJSON, err := json.Marshal(event)
+	if err != nil {
+		// Log error but don't fail the request
+		return
+	}
+
+	h.hub.Broadcast(eventJSON)
+}
+
+// broadcastTaskAfterStop gets the task and broadcasts its updated status
+func (h *TaskHandler) broadcastTaskAfterStop(taskID string) {
+	// Get the updated worker status
+	workers, err := h.manager.ListWorkers()
+	if err != nil {
+		return
+	}
+
+	// Find the worker and broadcast its updated status
+	for _, worker := range workers {
+		if worker.ID == taskID {
+			task := TaskDTO{
+				ID:       worker.ID,
+				ThreadID: worker.ThreadID,
+				Status:   worker.Status,
+				Started:  worker.Started,
+				LogFile:  worker.LogFile,
+			}
+			h.broadcastTaskUpdate(task)
+			break
+		}
 	}
 }
 
@@ -102,6 +149,9 @@ func (h *TaskHandler) StartTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
+
+	// Broadcast task update event
+	h.broadcastTaskUpdate(task)
 }
 
 // StopTask stops a running task
@@ -127,6 +177,9 @@ func (h *TaskHandler) StopTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+
+	// Broadcast task update after stopping
+	h.broadcastTaskAfterStop(taskID)
 }
 
 // ContinueTask sends a message to a running task
