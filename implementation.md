@@ -13,7 +13,7 @@
   - **Step Dependencies**: None
   - **User Instructions**: `go run ./cmd/ampd` should start a server on port 8080.
 
-- [ ] Step 2: Add basic router, health check, and test tooling
+- [x] Step 2: Add basic router, health check, and test tooling
   - **Task**: Introduce `chi` router, `/healthz` endpoint, and install `github.com/stretchr/testify`.
   - **Description**: Gives us one real route and the test library we’ll use throughout.
   - **Files**:
