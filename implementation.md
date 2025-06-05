@@ -158,7 +158,7 @@
 
 ## WebSocket protocol enrichment
 
-- [ ] Step 17: Implement event type switching, ping/pong, heartbeat timeouts
+- [x] Step 17: Implement event type switching, ping/pong, heartbeat timeouts
   - **Task**: hub routes by `msg.Type`, responds with `pong`, closes idle conns.
 
 ## Rate limiting & CORS hardening

@@ -3,8 +3,22 @@ package hub
 import (
 	"log"
 	"net/http"
+	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+)
+
+const (
+	// Heartbeat timeout - disconnect clients that haven't been active
+	heartbeatTimeout = 120 * time.Second
+	
+	// Heartbeat check interval
+	heartbeatInterval = 30 * time.Second
+	
+	// Server heartbeat send interval
+	serverHeartbeatInterval = 45 * time.Second
 )
 
 // Hub maintains the set of active clients and broadcasts messages to clients
@@ -23,11 +37,20 @@ type Hub struct {
 
 	// WebSocket upgrader
 	upgrader websocket.Upgrader
+	
+	// Mutex for thread-safe access to clients
+	mu sync.RWMutex
+	
+	// Ticker for heartbeat checks
+	heartbeatTicker *time.Ticker
+	
+	// Ticker for server heartbeat messages
+	serverHeartbeatTicker *time.Ticker
 }
 
 // NewHub creates a new WebSocket hub
 func NewHub() *Hub {
-	return &Hub{
+	hub := &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte),
 		register:   make(chan *Client),
@@ -38,33 +61,56 @@ func NewHub() *Hub {
 				return true
 			},
 		},
+		heartbeatTicker:       time.NewTicker(heartbeatInterval),
+		serverHeartbeatTicker: time.NewTicker(serverHeartbeatInterval),
 	}
+	return hub
 }
 
 // Run starts the hub and handles client registration, unregistration, and broadcasting
 func (h *Hub) Run() {
+	defer h.heartbeatTicker.Stop()
+	defer h.serverHeartbeatTicker.Stop()
+	
 	for {
 		select {
 		case client := <-h.register:
+			h.mu.Lock()
 			h.clients[client] = true
-			log.Printf("Client registered: %p", client)
+			h.mu.Unlock()
+			client.SetConnected(true)
+			log.Printf("Client registered: %s", client.id)
 
 		case client := <-h.unregister:
+			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
-				log.Printf("Client unregistered: %p", client)
+				client.SetConnected(false)
+				log.Printf("Client unregistered: %s", client.id)
 			}
+			h.mu.Unlock()
 
 		case message := <-h.broadcast:
+			h.mu.RLock()
 			for client := range h.clients {
-				select {
-				case client.send <- message:
-				default:
-					close(client.send)
-					delete(h.clients, client)
+				if client.IsConnected() {
+					select {
+					case client.send <- message:
+					default:
+						close(client.send)
+						delete(h.clients, client)
+						client.SetConnected(false)
+					}
 				}
 			}
+			h.mu.RUnlock()
+			
+		case <-h.heartbeatTicker.C:
+			h.checkHeartbeats()
+			
+		case <-h.serverHeartbeatTicker.C:
+			h.sendServerHeartbeat()
 		}
 	}
 }
@@ -84,6 +130,52 @@ func (h *Hub) Unregister(client *Client) {
 	h.unregister <- client
 }
 
+// checkHeartbeats disconnects clients that have timed out
+func (h *Hub) checkHeartbeats() {
+	now := time.Now()
+	var timeoutClients []*Client
+
+	h.mu.RLock()
+	for client := range h.clients {
+		if client.IsConnected() {
+			lastHeartbeat := client.GetLastHeartbeat()
+			if !lastHeartbeat.IsZero() && now.Sub(lastHeartbeat) > heartbeatTimeout {
+				timeoutClients = append(timeoutClients, client)
+			}
+		}
+	}
+	h.mu.RUnlock()
+
+	// Disconnect timed out clients
+	for _, client := range timeoutClients {
+		log.Printf("Client %s timed out, disconnecting", client.id)
+		h.Unregister(client)
+		client.conn.Close()
+	}
+}
+
+// sendServerHeartbeat sends heartbeat messages to all connected clients
+func (h *Hub) sendServerHeartbeat() {
+	heartbeatData := HeartbeatMessage{
+		Timestamp: time.Now(),
+		ServerID:  "amp-orchestrator",
+	}
+
+	heartbeatMsg, err := CreateMessage(MessageTypeHeartbeat, heartbeatData)
+	if err != nil {
+		log.Printf("Failed to create heartbeat message: %v", err)
+		return
+	}
+
+	heartbeatBytes, err := MarshalMessage(heartbeatMsg)
+	if err != nil {
+		log.Printf("Failed to marshal heartbeat message: %v", err)
+		return
+	}
+
+	h.Broadcast(heartbeatBytes)
+}
+
 // ServeWS handles websocket requests from clients
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
@@ -93,9 +185,15 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &Client{
-		hub:  h,
-		conn: conn,
-		send: make(chan []byte, 256),
+		hub:             h,
+		conn:            conn,
+		send:            make(chan []byte, 256),
+		id:              uuid.New().String()[:8], // Short client ID
+		lastHeartbeat:   time.Now(),
+		lastPong:        time.Now(),
+		subscribedTypes: make(map[MessageType]bool),
+		subscribedTasks: make(map[string]bool),
+		connected:       false,
 	}
 
 	client.hub.Register(client)

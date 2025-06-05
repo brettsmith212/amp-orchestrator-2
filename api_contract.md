@@ -730,6 +730,126 @@ Sent in real-time when new messages are added to a task's conversation thread.
 - System messages are created
 - Tool outputs are recorded
 
+#### Heartbeat Events
+
+Sent periodically by the server to maintain connection health and detect inactive clients.
+
+**Event Structure:**
+```json
+{
+  "type": "heartbeat",
+  "data": {
+    "timestamp": "2025-06-04T16:18:30.000000000-07:00",
+    "server_id": "amp-orchestrator"
+  },
+  "timestamp": "2025-06-04T16:18:30.000000000-07:00"
+}
+```
+
+**When Triggered:**
+- Automatically every 45 seconds to all connected clients
+- Used for connection health monitoring
+
+#### Pong Events
+
+Sent in response to client ping messages for connection health checking.
+
+**Event Structure:**
+```json
+{
+  "type": "pong",
+  "data": {
+    "id": "ping-123",
+    "timestamp": "2025-06-04T16:18:25.000000000-07:00",
+    "ping_id": "ping-123"
+  },
+  "timestamp": "2025-06-04T16:18:25.000000000-07:00"
+}
+```
+
+**When Triggered:**
+- In response to client ping messages
+- Used for round-trip time measurement
+
+### Client-to-Server Messages
+
+Clients can send structured messages to the server for various purposes:
+
+#### Ping Messages
+
+Send a ping to test connection and measure round-trip time.
+
+**Message Structure:**
+```json
+{
+  "type": "ping",
+  "data": {
+    "id": "ping-123",
+    "timestamp": "2025-06-04T16:18:25.000000000-07:00"
+  }
+}
+```
+
+**Server Response:** Pong message with matching ID
+
+#### Subscribe Messages
+
+Subscribe to specific message types or task updates.
+
+**Message Structure:**
+```json
+{
+  "type": "subscribe",
+  "data": {
+    "types": ["log", "task-update"],
+    "task_ids": ["4811eece", "83d660b7"]
+  }
+}
+```
+
+**Parameters:**
+- `types` (array): Message types to subscribe to (`log`, `task-update`, `thread_message`)
+- `task_ids` (array, optional): Specific task IDs to receive updates for
+
+**Behavior:**
+- If no subscriptions are set, client receives all messages (default)
+- If subscriptions are set, client only receives matching messages
+- Client receives message if it matches subscribed type OR subscribed task ID
+
+#### Unsubscribe Messages
+
+Unsubscribe from specific message types or task updates.
+
+**Message Structure:**
+```json
+{
+  "type": "unsubscribe",
+  "data": {
+    "types": ["log"],
+    "task_ids": ["4811eece"]
+  }
+}
+```
+
+**Parameters:**
+- `types` (array): Message types to unsubscribe from
+- `task_ids` (array, optional): Specific task IDs to stop receiving updates for
+
+### Connection Management
+
+#### Heartbeat & Timeout
+
+- **Server Heartbeat**: Server sends heartbeat messages every 45 seconds
+- **Client Activity**: Any message from client updates last activity timestamp
+- **Timeout**: Clients are disconnected after 120 seconds of inactivity
+- **Ping/Pong**: Standard WebSocket ping/pong frames are used alongside structured messages
+
+#### Error Handling
+
+- **Invalid JSON**: Malformed messages are logged and ignored, connection remains open
+- **Unknown Types**: Unknown message types are logged and ignored
+- **Connection Drops**: Server automatically cleans up disconnected clients
+
 ---
 
 ## Error Handling
@@ -926,6 +1046,12 @@ const connectWebSocket = () => {
       case 'thread_message':
         handleThreadMessage(data.data);
         break;
+      case 'heartbeat':
+        handleHeartbeat(data.data);
+        break;
+      case 'pong':
+        handlePong(data.data);
+        break;
       default:
         console.log('Unknown event type:', data.type);
     }
@@ -1028,6 +1154,126 @@ const fetchThreadMessages = async (taskId, options = {}) => {
 // const nextPage = await fetchThreadMessages('4811eece', { limit: 20, offset: 20 });
 ```
 
+#### WebSocket Protocol Features
+```javascript
+// Enhanced WebSocket connection with subscription and ping support
+const connectEnhancedWebSocket = () => {
+  const ws = new WebSocket('ws://localhost:8080/api/ws');
+  let pingInterval;
+  
+  ws.onopen = () => {
+    console.log('WebSocket connected');
+    
+    // Subscribe to specific message types
+    const subscribeMessage = {
+      type: 'subscribe',
+      data: {
+        types: ['task-update', 'log'],
+        task_ids: ['4811eece']  // Only receive updates for specific task
+      }
+    };
+    ws.send(JSON.stringify(subscribeMessage));
+    
+    // Start ping interval for connection health monitoring
+    pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        const pingMessage = {
+          type: 'ping',
+          data: {
+            id: `ping-${Date.now()}`,
+            timestamp: new Date().toISOString()
+          }
+        };
+        ws.send(JSON.stringify(pingMessage));
+      }
+    }, 30000); // Ping every 30 seconds
+  };
+  
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    
+    switch (data.type) {
+      case 'task-update':
+        handleTaskUpdate(data.data);
+        break;
+      case 'log':
+        handleLogEvent(data.data);
+        break;
+      case 'thread_message':
+        handleThreadMessage(data.data);
+        break;
+      case 'heartbeat':
+        // Server heartbeat - connection is healthy
+        console.log('Received server heartbeat');
+        break;
+      case 'pong':
+        // Response to our ping - measure round trip time
+        const sentTime = new Date(data.data.timestamp);
+        const rtt = Date.now() - sentTime.getTime();
+        console.log(`Ping RTT: ${rtt}ms`);
+        break;
+      default:
+        console.log('Unknown event type:', data.type);
+    }
+  };
+  
+  ws.onclose = () => {
+    console.log('WebSocket disconnected');
+    if (pingInterval) {
+      clearInterval(pingInterval);
+    }
+  };
+  
+  ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+  };
+  
+  return ws;
+};
+
+// Subscribe to specific events
+const subscribeToEvents = (ws, types, taskIds = []) => {
+  const message = {
+    type: 'subscribe',
+    data: {
+      types: types,
+      task_ids: taskIds
+    }
+  };
+  ws.send(JSON.stringify(message));
+};
+
+// Unsubscribe from events
+const unsubscribeFromEvents = (ws, types, taskIds = []) => {
+  const message = {
+    type: 'unsubscribe',
+    data: {
+      types: types,
+      task_ids: taskIds
+    }
+  };
+  ws.send(JSON.stringify(message));
+};
+
+// Send ping to test connection
+const sendPing = (ws) => {
+  const message = {
+    type: 'ping',
+    data: {
+      id: `ping-${Date.now()}`,
+      timestamp: new Date().toISOString()
+    }
+  };
+  ws.send(JSON.stringify(message));
+};
+
+// Usage examples:
+// const ws = connectEnhancedWebSocket();
+// subscribeToEvents(ws, ['log', 'task-update'], ['task1', 'task2']);
+// unsubscribeFromEvents(ws, ['log']);
+// sendPing(ws);
+```
+
 ---
 
 ## Rate Limiting
@@ -1070,3 +1316,9 @@ The server includes basic CORS middleware. For production deployment, configure 
 11. **Task Metadata**: Tasks support optional metadata (title, description, tags, priority) that can be updated via PATCH operations without affecting task execution.
 
 12. **Git Integration Placeholders**: Merge, delete-branch, and create-pr endpoints are implemented as stubs returning TODO messages, ready for future Git integration.
+
+13. **Enhanced WebSocket Protocol**: WebSocket connections support structured messaging with ping/pong for health monitoring, subscription filtering for selective event delivery, and automatic heartbeat/timeout management.
+
+14. **WebSocket Connection Health**: Server automatically disconnects inactive clients after 120 seconds and sends heartbeat messages every 45 seconds. Clients can send ping messages for round-trip time measurement.
+
+15. **Message Filtering**: Clients can subscribe to specific message types or task IDs to reduce bandwidth and improve performance. Default behavior delivers all messages if no subscriptions are set.
