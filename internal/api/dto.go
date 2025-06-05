@@ -4,16 +4,28 @@ import "time"
 
 // TaskDTO represents a task for API responses
 type TaskDTO struct {
-	ID       string    `json:"id"`
-	ThreadID string    `json:"thread_id"`
-	Status   string    `json:"status"`
-	Started  time.Time `json:"started"`
-	LogFile  string    `json:"log_file"`
+	ID          string    `json:"id"`
+	ThreadID    string    `json:"thread_id"`
+	Status      string    `json:"status"`
+	Started     time.Time `json:"started"`
+	LogFile     string    `json:"log_file"`
+	Title       string    `json:"title,omitempty"`
+	Description string    `json:"description,omitempty"`
+	Tags        []string  `json:"tags,omitempty"`
+	Priority    string    `json:"priority,omitempty"`
 }
 
 // StartTaskRequest represents the request body for starting a task
 type StartTaskRequest struct {
 	Message string `json:"message"`
+}
+
+// PatchTaskRequest represents the request body for updating a task
+type PatchTaskRequest struct {
+	Title       *string  `json:"title,omitempty"`
+	Description *string  `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Priority    *string  `json:"priority,omitempty"`
 }
 
 // WebSocketEvent represents events sent over WebSocket

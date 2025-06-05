@@ -39,17 +39,25 @@ func main() {
 		for _, w := range workers {
 			if w.ID == workerID {
 				taskDTO := struct {
-					ID       string    `json:"id"`
-					ThreadID string    `json:"thread_id"`
-					Status   string    `json:"status"`
-					Started  time.Time `json:"started"`
-					LogFile  string    `json:"log_file"`
+					ID          string    `json:"id"`
+					ThreadID    string    `json:"thread_id"`
+					Status      string    `json:"status"`
+					Started     time.Time `json:"started"`
+					LogFile     string    `json:"log_file"`
+					Title       string    `json:"title,omitempty"`
+					Description string    `json:"description,omitempty"`
+					Tags        []string  `json:"tags,omitempty"`
+					Priority    string    `json:"priority,omitempty"`
 				}{
-					ID:       w.ID,
-					ThreadID: w.ThreadID,
-					Status:   string(w.Status),
-					Started:  w.Started,
-					LogFile:  w.LogFile,
+					ID:          w.ID,
+					ThreadID:    w.ThreadID,
+					Status:      string(w.Status),
+					Started:     w.Started,
+					LogFile:     w.LogFile,
+					Title:       w.Title,
+					Description: w.Description,
+					Tags:        w.Tags,
+					Priority:    w.Priority,
 				}
 				
 				event := struct {

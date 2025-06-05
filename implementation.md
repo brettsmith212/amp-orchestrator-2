@@ -147,7 +147,7 @@
 
 ## PATCH, DELETE and Git operations
 
-- [ ] Step 15: Add PATCH /api/tasks/:id, DELETE /api/tasks/:id, merge/delete-branch/create-pr stubs
+- [x] Step 15: Add PATCH /api/tasks/:id, DELETE /api/tasks/:id, merge/delete-branch/create-pr stubs
   - **Task**: accept JSON patch, update metadata; Git stubs return 202 + TODO.
   - **Description**: UI buttons won’t break even before Git integration is ready.
 

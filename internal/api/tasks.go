@@ -59,11 +59,15 @@ func (h *TaskHandler) broadcastTaskAfterStop(taskID string) {
 	for _, worker := range workers {
 		if worker.ID == taskID {
 			task := TaskDTO{
-			ID:       worker.ID,
-			ThreadID: worker.ThreadID,
-			Status:   string(worker.Status),
-			Started:  worker.Started,
-			LogFile:  worker.LogFile,
+				ID:          worker.ID,
+				ThreadID:    worker.ThreadID,
+				Status:      string(worker.Status),
+				Started:     worker.Started,
+				LogFile:     worker.LogFile,
+				Title:       worker.Title,
+				Description: worker.Description,
+				Tags:        worker.Tags,
+				Priority:    worker.Priority,
 			}
 			h.broadcastTaskUpdate(task)
 			break
@@ -149,11 +153,15 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) error {
 	tasks := make([]TaskDTO, len(paginatedWorkers))
 	for i, worker := range paginatedWorkers {
 		tasks[i] = TaskDTO{
-			ID:       worker.ID,
-			ThreadID: worker.ThreadID,
-			Status:   string(worker.Status),
-			Started:  worker.Started,
-			LogFile:  worker.LogFile,
+			ID:          worker.ID,
+			ThreadID:    worker.ThreadID,
+			Status:      string(worker.Status),
+			Started:     worker.Started,
+			LogFile:     worker.LogFile,
+			Title:       worker.Title,
+			Description: worker.Description,
+			Tags:        worker.Tags,
+			Priority:    worker.Priority,
 		}
 	}
 
@@ -214,11 +222,15 @@ func (h *TaskHandler) StartTask(w http.ResponseWriter, r *http.Request) {
 
 	// Convert to DTO and return
 	task := TaskDTO{
-		ID:       latestWorker.ID,
-		ThreadID: latestWorker.ThreadID,
-		Status:   string(latestWorker.Status),
-		Started:  latestWorker.Started,
-		LogFile:  latestWorker.LogFile,
+		ID:          latestWorker.ID,
+		ThreadID:    latestWorker.ThreadID,
+		Status:      string(latestWorker.Status),
+		Started:     latestWorker.Started,
+		LogFile:     latestWorker.LogFile,
+		Title:       latestWorker.Title,
+		Description: latestWorker.Description,
+		Tags:        latestWorker.Tags,
+		Priority:    latestWorker.Priority,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -377,4 +389,143 @@ func (h *TaskHandler) RetryTask(w http.ResponseWriter, r *http.Request) {
 	h.broadcastTaskAfterStop(workerID)
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// PatchTask updates task metadata
+func (h *TaskHandler) PatchTask(w http.ResponseWriter, r *http.Request) {
+	workerID := chi.URLParam(r, "id")
+	
+	var req PatchTaskRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	
+	if err := h.manager.UpdateWorkerMetadata(workerID, req.Title, req.Description, req.Priority, req.Tags); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Task not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to update task", http.StatusInternalServerError)
+		return
+	}
+
+	// Broadcast the task update after patching
+	h.broadcastTaskAfterStop(workerID)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// DeleteTask removes a task completely
+func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
+	workerID := chi.URLParam(r, "id")
+	
+	if err := h.manager.DeleteWorker(workerID); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Task not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Failed to delete task", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Git operation stub endpoints - these return 202 + TODO for now
+
+// MergeTask creates a merge request/PR for the task's changes
+func (h *TaskHandler) MergeTask(w http.ResponseWriter, r *http.Request) {
+	workerID := chi.URLParam(r, "id")
+	
+	// Verify task exists
+	workers, err := h.manager.ListWorkers()
+	if err != nil {
+		http.Error(w, "Failed to get tasks", http.StatusInternalServerError)
+		return
+	}
+	
+	found := false
+	for _, worker := range workers {
+		if worker.ID == workerID {
+			found = true
+			break
+		}
+	}
+	
+	if !found {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "TODO: Git merge operation not yet implemented",
+		"status":  "accepted",
+	})
+}
+
+// DeleteBranchTask deletes the git branch associated with the task
+func (h *TaskHandler) DeleteBranchTask(w http.ResponseWriter, r *http.Request) {
+	workerID := chi.URLParam(r, "id")
+	
+	// Verify task exists
+	workers, err := h.manager.ListWorkers()
+	if err != nil {
+		http.Error(w, "Failed to get tasks", http.StatusInternalServerError)
+		return
+	}
+	
+	found := false
+	for _, worker := range workers {
+		if worker.ID == workerID {
+			found = true
+			break
+		}
+	}
+	
+	if !found {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "TODO: Git branch deletion not yet implemented",
+		"status":  "accepted",
+	})
+}
+
+// CreatePRTask creates a pull request for the task's changes
+func (h *TaskHandler) CreatePRTask(w http.ResponseWriter, r *http.Request) {
+	workerID := chi.URLParam(r, "id")
+	
+	// Verify task exists
+	workers, err := h.manager.ListWorkers()
+	if err != nil {
+		http.Error(w, "Failed to get tasks", http.StatusInternalServerError)
+		return
+	}
+	
+	found := false
+	for _, worker := range workers {
+		if worker.ID == workerID {
+			found = true
+			break
+		}
+	}
+	
+	if !found {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "TODO: Create pull request operation not yet implemented",
+		"status":  "accepted",
+	})
 }

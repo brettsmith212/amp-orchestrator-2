@@ -254,3 +254,191 @@ req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Con
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
 }
+
+func TestPatchTask(t *testing.T) {
+tempDir := t.TempDir()
+manager := worker.NewManager(tempDir)
+h := hub.NewHub()
+go h.Run() // Start the hub in a goroutine
+handler := NewTaskHandler(manager, h)
+
+// Create a test worker
+testWorkers := map[string]*worker.Worker{
+"test-worker": {
+ID:       "test-worker",
+ThreadID: "T-test-123",
+PID:      999999,
+LogFile:  filepath.Join(tempDir, "test.log"),
+Started:  time.Now(),
+Status:   worker.StatusRunning,
+},
+}
+
+err := manager.SaveWorkersForTest(testWorkers, filepath.Join(tempDir, "workers.json"))
+require.NoError(t, err)
+
+reqBody := `{"title": "Updated Task", "description": "New description", "priority": "high", "tags": ["urgent", "bug"]}`
+req := httptest.NewRequest("PATCH", "/api/tasks/test-worker", strings.NewReader(reqBody))
+req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
+URLParams: chi.RouteParams{
+Keys:   []string{"id"},
+Values: []string{"test-worker"},
+},
+}))
+req.Header.Set("Content-Type", "application/json")
+w := httptest.NewRecorder()
+
+handler.PatchTask(w, req)
+
+assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestPatchTask_NotFound(t *testing.T) {
+tempDir := t.TempDir()
+manager := worker.NewManager(tempDir)
+h := hub.NewHub()
+go h.Run()
+handler := NewTaskHandler(manager, h)
+
+reqBody := `{"title": "Updated Task"}`
+req := httptest.NewRequest("PATCH", "/api/tasks/nonexistent", strings.NewReader(reqBody))
+req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
+URLParams: chi.RouteParams{
+Keys:   []string{"id"},
+Values: []string{"nonexistent"},
+},
+}))
+req.Header.Set("Content-Type", "application/json")
+w := httptest.NewRecorder()
+
+handler.PatchTask(w, req)
+
+assert.Equal(t, http.StatusNotFound, w.Code)
+assert.Contains(t, w.Body.String(), "Task not found")
+}
+
+func TestDeleteTask(t *testing.T) {
+tempDir := t.TempDir()
+manager := worker.NewManager(tempDir)
+h := hub.NewHub()
+go h.Run()
+handler := NewTaskHandler(manager, h)
+
+// Create a test worker
+testWorkers := map[string]*worker.Worker{
+"test-worker": {
+ID:       "test-worker",
+ThreadID: "T-test-123",
+PID:      999999,
+LogFile:  filepath.Join(tempDir, "test.log"),
+Started:  time.Now(),
+Status:   worker.StatusStopped,
+},
+}
+
+err := manager.SaveWorkersForTest(testWorkers, filepath.Join(tempDir, "workers.json"))
+require.NoError(t, err)
+
+req := httptest.NewRequest("DELETE", "/api/tasks/test-worker", nil)
+req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
+URLParams: chi.RouteParams{
+Keys:   []string{"id"},
+Values: []string{"test-worker"},
+},
+}))
+w := httptest.NewRecorder()
+
+handler.DeleteTask(w, req)
+
+assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestDeleteTask_NotFound(t *testing.T) {
+tempDir := t.TempDir()
+manager := worker.NewManager(tempDir)
+h := hub.NewHub()
+go h.Run()
+handler := NewTaskHandler(manager, h)
+
+req := httptest.NewRequest("DELETE", "/api/tasks/nonexistent", nil)
+req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
+URLParams: chi.RouteParams{
+Keys:   []string{"id"},
+Values: []string{"nonexistent"},
+},
+}))
+w := httptest.NewRecorder()
+
+handler.DeleteTask(w, req)
+
+assert.Equal(t, http.StatusNotFound, w.Code)
+assert.Contains(t, w.Body.String(), "Task not found")
+}
+
+func TestGitStubEndpoints(t *testing.T) {
+tempDir := t.TempDir()
+manager := worker.NewManager(tempDir)
+h := hub.NewHub()
+go h.Run()
+handler := NewTaskHandler(manager, h)
+
+// Create a test worker
+testWorkers := map[string]*worker.Worker{
+"test-worker": {
+ID:       "test-worker",
+ThreadID: "T-test-123",
+PID:      999999,
+LogFile:  filepath.Join(tempDir, "test.log"),
+Started:  time.Now(),
+Status:   worker.StatusCompleted,
+},
+}
+
+err := manager.SaveWorkersForTest(testWorkers, filepath.Join(tempDir, "workers.json"))
+require.NoError(t, err)
+
+// Test merge endpoint
+req := httptest.NewRequest("POST", "/api/tasks/test-worker/merge", nil)
+req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
+URLParams: chi.RouteParams{
+Keys:   []string{"id"},
+Values: []string{"test-worker"},
+},
+}))
+w := httptest.NewRecorder()
+
+handler.MergeTask(w, req)
+
+assert.Equal(t, http.StatusAccepted, w.Code)
+assert.Contains(t, w.Body.String(), "TODO: Git merge operation not yet implemented")
+
+// Test delete-branch endpoint
+req = httptest.NewRequest("POST", "/api/tasks/test-worker/delete-branch", nil)
+req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
+URLParams: chi.RouteParams{
+Keys:   []string{"id"},
+Values: []string{"test-worker"},
+},
+}))
+w = httptest.NewRecorder()
+
+handler.DeleteBranchTask(w, req)
+
+assert.Equal(t, http.StatusAccepted, w.Code)
+assert.Contains(t, w.Body.String(), "TODO: Git branch deletion not yet implemented")
+
+// Test create-pr endpoint
+req = httptest.NewRequest("POST", "/api/tasks/test-worker/create-pr", nil)
+req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
+URLParams: chi.RouteParams{
+Keys:   []string{"id"},
+Values: []string{"test-worker"},
+},
+}))
+w = httptest.NewRecorder()
+
+handler.CreatePRTask(w, req)
+
+assert.Equal(t, http.StatusAccepted, w.Code)
+assert.Contains(t, w.Body.String(), "TODO: Create pull request operation not yet implemented")
+}

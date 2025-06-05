@@ -402,6 +402,77 @@ func (m *Manager) RetryWorker(workerID, message string) error {
 	return nil
 }
 
+// UpdateWorkerMetadata updates the metadata fields of a worker
+func (m *Manager) UpdateWorkerMetadata(workerID string, title, description, priority *string, tags []string) error {
+	workers, err := m.loadWorkers()
+	if err != nil {
+		return err
+	}
+
+	worker, exists := workers[workerID]
+	if !exists {
+		return fmt.Errorf("worker %s not found", workerID)
+	}
+
+	// Update fields if provided
+	if title != nil {
+		worker.Title = *title
+	}
+	if description != nil {
+		worker.Description = *description
+	}
+	if priority != nil {
+		worker.Priority = *priority
+	}
+	if tags != nil {
+		worker.Tags = tags
+	}
+
+	// Save updated worker
+	workers[workerID] = worker
+	return m.saveWorkers(workers)
+}
+
+// DeleteWorker removes a worker from the system
+func (m *Manager) DeleteWorker(workerID string) error {
+	workers, err := m.loadWorkers()
+	if err != nil {
+		return err
+	}
+
+	worker, exists := workers[workerID]
+	if !exists {
+		return fmt.Errorf("worker %s not found", workerID)
+	}
+
+	// If worker is running, stop it first
+	if worker.Status == StatusRunning {
+		// Kill the process if it's still running
+		if err := syscall.Kill(-worker.PID, syscall.SIGTERM); err != nil {
+			// Try individual process if group kill fails
+			if process, findErr := os.FindProcess(worker.PID); findErr == nil {
+				process.Kill()
+			}
+		}
+		
+		// Kill any remaining amp processes
+		m.killAmpProcesses(worker.ThreadID)
+		
+		// Stop log tailer
+		m.stopLogTailer(workerID)
+	}
+
+	// Remove from workers map
+	delete(workers, workerID)
+	
+	// Clean up log file if it exists
+	if worker.LogFile != "" {
+		os.Remove(worker.LogFile)
+	}
+
+	return m.saveWorkers(workers)
+}
+
 func (m *Manager) ListWorkers() ([]*Worker, error) {
 	workers, err := m.loadWorkers()
 	if err != nil {

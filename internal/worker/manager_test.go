@@ -367,3 +367,112 @@ func TestManager_RetryWorker_InvalidTransition(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot retry")
 }
+
+func TestManager_UpdateWorkerMetadata(t *testing.T) {
+tmpDir, err := os.MkdirTemp("", "worker-test-*")
+require.NoError(t, err)
+defer os.RemoveAll(tmpDir)
+
+manager := NewManager(tmpDir)
+
+// Create a test worker
+testWorkers := map[string]*Worker{
+"test-worker": {
+ID:       "test-worker",
+ThreadID: "T-test-123",
+PID:      12345,
+LogFile:  filepath.Join(tmpDir, "test.log"),
+Started:  time.Now(),
+Status:   StatusRunning,
+},
+}
+
+err = manager.SaveWorkersForTest(testWorkers, filepath.Join(tmpDir, "workers.json"))
+require.NoError(t, err)
+
+// Update metadata
+title := "Updated Task"
+description := "New description"
+priority := "high"
+tags := []string{"urgent", "bug"}
+
+err = manager.UpdateWorkerMetadata("test-worker", &title, &description, &priority, tags)
+require.NoError(t, err)
+
+// Verify updates
+workers, err := manager.loadWorkers()
+require.NoError(t, err)
+
+worker := workers["test-worker"]
+assert.Equal(t, "Updated Task", worker.Title)
+assert.Equal(t, "New description", worker.Description)
+assert.Equal(t, "high", worker.Priority)
+assert.Equal(t, []string{"urgent", "bug"}, worker.Tags)
+}
+
+func TestManager_UpdateWorkerMetadata_NotFound(t *testing.T) {
+tmpDir, err := os.MkdirTemp("", "worker-test-*")
+require.NoError(t, err)
+defer os.RemoveAll(tmpDir)
+
+manager := NewManager(tmpDir)
+
+title := "Updated Task"
+err = manager.UpdateWorkerMetadata("nonexistent", &title, nil, nil, nil)
+assert.Error(t, err)
+assert.Contains(t, err.Error(), "not found")
+}
+
+func TestManager_DeleteWorker(t *testing.T) {
+tmpDir, err := os.MkdirTemp("", "worker-test-*")
+require.NoError(t, err)
+defer os.RemoveAll(tmpDir)
+
+manager := NewManager(tmpDir)
+
+// Create test log file
+logFile := filepath.Join(tmpDir, "test.log")
+_, err = os.Create(logFile)
+require.NoError(t, err)
+
+// Create a test worker
+testWorkers := map[string]*Worker{
+"test-worker": {
+ID:       "test-worker",
+ThreadID: "T-test-123",
+PID:      999999, // Fake PID
+LogFile:  logFile,
+Started:  time.Now(),
+Status:   StatusStopped,
+},
+}
+
+err = manager.SaveWorkersForTest(testWorkers, filepath.Join(tmpDir, "workers.json"))
+require.NoError(t, err)
+
+// Delete worker
+err = manager.DeleteWorker("test-worker")
+require.NoError(t, err)
+
+// Verify worker is deleted
+workers, err := manager.loadWorkers()
+require.NoError(t, err)
+_, exists := workers["test-worker"]
+assert.False(t, exists)
+
+// Verify log file is cleaned up
+_, err = os.Stat(logFile)
+assert.True(t, os.IsNotExist(err))
+}
+
+func TestManager_DeleteWorker_NotFound(t *testing.T) {
+tmpDir, err := os.MkdirTemp("", "worker-test-*")
+require.NoError(t, err)
+defer os.RemoveAll(tmpDir)
+
+manager := NewManager(tmpDir)
+
+err = manager.DeleteWorker("nonexistent")
+assert.Error(t, err)
+assert.Contains(t, err.Error(), "not found")
+}

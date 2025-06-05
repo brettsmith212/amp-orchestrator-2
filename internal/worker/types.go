@@ -15,12 +15,16 @@ const (
 )
 
 type Worker struct {
-	ID       string       `json:"id"`
-	ThreadID string       `json:"thread_id"`
-	PID      int          `json:"pid"`
-	LogFile  string       `json:"log_file"`
-	Started  time.Time    `json:"started"`
-	Status   WorkerStatus `json:"status"`
+	ID          string       `json:"id"`
+	ThreadID    string       `json:"thread_id"`
+	PID         int          `json:"pid"`
+	LogFile     string       `json:"log_file"`
+	Started     time.Time    `json:"started"`
+	Status      WorkerStatus `json:"status"`
+	Title       string       `json:"title,omitempty"`       // User-friendly task name
+	Description string       `json:"description,omitempty"` // Task description
+	Tags        []string     `json:"tags,omitempty"`        // Task tags/labels
+	Priority    string       `json:"priority,omitempty"`    // Task priority (low, medium, high)
 }
 
 // AllowedTransitions defines valid state transitions for workers
