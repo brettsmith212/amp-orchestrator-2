@@ -128,7 +128,7 @@
 
 ## Standard response & error envelope
 
-- [ ] Step 12: Add response helper and error middleware
+- [x] Step 12: Add response helper and error middleware
   - **Task**: `respond.JSON(w, payload)` and `errors.Wrap(...)` mapping to contract schema.
   - **Description**: Ensures every handler conforms without copy-pasting.
   - **Files**: pkg/response, pkg/apierr, middleware/error.go, tests.
