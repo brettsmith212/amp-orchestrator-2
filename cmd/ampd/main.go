@@ -28,6 +28,24 @@ func main() {
 	// Set up log callback to broadcast log events
 	manager.SetLogCallback(taskHandler.BroadcastLogEvent)
 	
+	// Set up thread message callback to broadcast thread message events
+	manager.SetThreadMessageCallback(func(workerID string, message worker.ThreadMessage) {
+		event := api.ThreadMessageEvent{
+			Type: "thread_message",
+			Data: api.ThreadMessageDTO{
+				ID:        message.ID,
+				Type:      string(message.Type),
+				Content:   message.Content,
+				Timestamp: message.Timestamp,
+				Metadata:  message.Metadata,
+			},
+		}
+		
+		if eventJSON, err := json.Marshal(event); err == nil {
+			h.Broadcast(eventJSON)
+		}
+	})
+	
 	// Set up worker exit callback to broadcast task updates
 	manager.SetExitCallback(func(workerID string) {
 		// Get the updated worker and broadcast its status

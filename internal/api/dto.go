@@ -60,3 +60,25 @@ type PaginatedTasksResponse struct {
 	HasMore    bool      `json:"has_more"`
 	Total      int       `json:"total"`
 }
+
+// ThreadMessageDTO represents a thread message for API responses
+type ThreadMessageDTO struct {
+	ID        string                 `json:"id"`
+	Type      string                 `json:"type"`
+	Content   string                 `json:"content"`
+	Timestamp time.Time              `json:"timestamp"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// PaginatedThreadResponse represents a paginated response for thread messages
+type PaginatedThreadResponse struct {
+	Messages []ThreadMessageDTO `json:"messages"`
+	HasMore  bool               `json:"has_more"`
+	Total    int                `json:"total"`
+}
+
+// ThreadMessageEvent represents a thread message event over WebSocket
+type ThreadMessageEvent struct {
+	Type string            `json:"type"` // "thread_message"
+	Data ThreadMessageDTO `json:"data"`
+}

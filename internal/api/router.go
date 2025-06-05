@@ -38,6 +38,7 @@ func NewRouter(taskHandler *TaskHandler, h *hub.Hub) *chi.Mux {
 		r.Post("/tasks/{id}/delete-branch", taskHandler.DeleteBranchTask)
 		r.Post("/tasks/{id}/create-pr", taskHandler.CreatePRTask)
 		r.Get("/tasks/{id}/logs", logHandler.GetTaskLogs)
+		r.Get("/tasks/{id}/thread", GetTaskThread(taskHandler.manager))
 		r.Get("/ws", wsHandler.ServeWS)
 	})
 	

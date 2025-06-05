@@ -22,8 +22,10 @@ type Manager struct {
 	ampBinaryPath string
 	onWorkerExit  func(workerID string) // Callback when worker exits
 	onLogLine     func(LogLine)         // Callback for log lines
+	onThreadMsg   func(workerID string, message ThreadMessage) // Callback for thread messages
 	tailers       map[string]*LogTailer // Active log tailers by worker ID
 	tailersMu     sync.RWMutex          // Protects tailers map
+	threadStorage *ThreadStorage        // Thread message storage
 }
 
 func NewManager(logDir string) *Manager {
@@ -40,7 +42,9 @@ func NewManager(logDir string) *Manager {
 		ampBinaryPath: "amp", // Assume amp is in PATH
 		onWorkerExit:  nil,   // Will be set via SetExitCallback
 		onLogLine:     nil,   // Will be set via SetLogCallback
+		onThreadMsg:   nil,   // Will be set via SetThreadMessageCallback
 		tailers:       make(map[string]*LogTailer),
+		threadStorage: NewThreadStorage(filepath.Join(logDir, "threads")),
 	}
 }
 
@@ -52,6 +56,11 @@ func (m *Manager) SetExitCallback(callback func(workerID string)) {
 // SetLogCallback sets the callback function to be called for each log line
 func (m *Manager) SetLogCallback(callback func(LogLine)) {
 	m.onLogLine = callback
+}
+
+// SetThreadMessageCallback sets the callback function to be called for thread messages
+func (m *Manager) SetThreadMessageCallback(callback func(workerID string, message ThreadMessage)) {
+	m.onThreadMsg = callback
 }
 
 func (m *Manager) StartWorker(message string) error {
@@ -647,6 +656,39 @@ func (m *Manager) SaveWorkersForTest(workers map[string]*Worker, stateFile strin
 	defer func() { m.stateFile = originalStateFile }()
 	
 	return m.saveWorkers(workers)
+}
+
+// AppendThreadMessage appends a message to the thread and optionally broadcasts it
+func (m *Manager) AppendThreadMessage(workerID string, messageType MessageType, content string, metadata map[string]interface{}) error {
+	message := ThreadMessage{
+		ID:        uuid.New().String(),
+		Type:      messageType,
+		Content:   content,
+		Timestamp: time.Now(),
+		Metadata:  metadata,
+	}
+
+	// Store the message
+	if err := m.threadStorage.AppendMessage(workerID, message); err != nil {
+		return fmt.Errorf("failed to store thread message: %w", err)
+	}
+
+	// Broadcast the message if callback is set
+	if m.onThreadMsg != nil {
+		m.onThreadMsg(workerID, message)
+	}
+
+	return nil
+}
+
+// GetThreadMessages retrieves thread messages for a worker with pagination
+func (m *Manager) GetThreadMessages(workerID string, limit, offset int) ([]ThreadMessage, error) {
+	return m.threadStorage.ReadMessages(workerID, limit, offset)
+}
+
+// CountThreadMessages returns the total number of messages in a thread
+func (m *Manager) CountThreadMessages(workerID string) (int, error) {
+	return m.threadStorage.CountMessages(workerID)
 }
 
 // sortWorkers sorts a slice of workers based on the given criteria

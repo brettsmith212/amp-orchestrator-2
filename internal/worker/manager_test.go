@@ -476,3 +476,91 @@ err = manager.DeleteWorker("nonexistent")
 assert.Error(t, err)
 assert.Contains(t, err.Error(), "not found")
 }
+
+func TestManagerThreadMessages(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "manager_thread_test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	manager := NewManager(tempDir)
+	workerID := "test-worker-123"
+
+	t.Run("AppendThreadMessage", func(t *testing.T) {
+		// Test basic message appending
+		err := manager.AppendThreadMessage(workerID, MessageTypeUser, "Hello", nil)
+		assert.NoError(t, err)
+
+		// Test with metadata
+		metadata := map[string]interface{}{"source": "api"}
+		err = manager.AppendThreadMessage(workerID, MessageTypeAssistant, "Hello back!", metadata)
+		assert.NoError(t, err)
+	})
+
+	t.Run("GetThreadMessages", func(t *testing.T) {
+		messages, err := manager.GetThreadMessages(workerID, 0, 0)
+		assert.NoError(t, err)
+		assert.Len(t, messages, 2)
+
+		// Check first message
+		assert.Equal(t, MessageTypeUser, messages[0].Type)
+		assert.Equal(t, "Hello", messages[0].Content)
+		assert.Nil(t, messages[0].Metadata)
+
+		// Check second message
+		assert.Equal(t, MessageTypeAssistant, messages[1].Type)
+		assert.Equal(t, "Hello back!", messages[1].Content)
+		assert.Equal(t, "api", messages[1].Metadata["source"])
+	})
+
+	t.Run("GetThreadMessagesWithPagination", func(t *testing.T) {
+		// Test with limit
+		messages, err := manager.GetThreadMessages(workerID, 1, 0)
+		assert.NoError(t, err)
+		assert.Len(t, messages, 1)
+		assert.Equal(t, "Hello", messages[0].Content)
+
+		// Test with offset
+		messages, err = manager.GetThreadMessages(workerID, 1, 1)
+		assert.NoError(t, err)
+		assert.Len(t, messages, 1)
+		assert.Equal(t, "Hello back!", messages[0].Content)
+	})
+
+	t.Run("CountThreadMessages", func(t *testing.T) {
+		count, err := manager.CountThreadMessages(workerID)
+		assert.NoError(t, err)
+		assert.Equal(t, 2, count)
+	})
+
+	t.Run("ThreadMessageCallback", func(t *testing.T) {
+		callbackCalled := false
+		var receivedWorkerID string
+		var receivedMessage ThreadMessage
+
+		manager.SetThreadMessageCallback(func(wID string, msg ThreadMessage) {
+			callbackCalled = true
+			receivedWorkerID = wID
+			receivedMessage = msg
+		})
+
+		err := manager.AppendThreadMessage("callback-test", MessageTypeSystem, "System message", nil)
+		assert.NoError(t, err)
+
+		assert.True(t, callbackCalled)
+		assert.Equal(t, "callback-test", receivedWorkerID)
+		assert.Equal(t, MessageTypeSystem, receivedMessage.Type)
+		assert.Equal(t, "System message", receivedMessage.Content)
+		assert.NotEmpty(t, receivedMessage.ID)
+		assert.False(t, receivedMessage.Timestamp.IsZero())
+	})
+
+	t.Run("NonExistentWorker", func(t *testing.T) {
+		messages, err := manager.GetThreadMessages("non-existent", 0, 0)
+		assert.NoError(t, err)
+		assert.Len(t, messages, 0)
+
+		count, err := manager.CountThreadMessages("non-existent")
+		assert.NoError(t, err)
+		assert.Equal(t, 0, count)
+	})
+}

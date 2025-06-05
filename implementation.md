@@ -153,7 +153,7 @@
 
 ## Thread & message endpoints
 
-- [ ] Step 16: Store thread messages (JSONL per task) and expose /thread endpoint
+- [x] Step 16: Store thread messages (JSONL per task) and expose /thread endpoint
   - **Task**: append from WorkerManager, paginate, deliver over WS (`thread_message`).
 
 ## WebSocket protocol enrichment

@@ -95,9 +95,13 @@ Content-Type: application/json
 **Task Object Structure:**
 - `id` (string): Unique task identifier (8-character hex)
 - `thread_id` (string): Amp thread identifier (T-{uuid})
-- `status` (string): Current task status (`running` | `stopped`)
+- `status` (string): Current task status (`running` | `stopped` | `interrupted` | `aborted` | `failed` | `completed`)
 - `started` (string): ISO 8601 timestamp when task was created
 - `log_file` (string): Path to task's log file
+- `title` (string, optional): Human-readable task title
+- `description` (string, optional): Task description
+- `tags` (array of strings, optional): Task tags for categorization
+- `priority` (string, optional): Task priority level
 
 #### `POST /api/tasks`
 
@@ -254,6 +258,298 @@ Content-Type: text/plain
 Failed to continue task
 ```
 
+#### `POST /api/tasks/{id}/interrupt`
+
+Interrupt a running task with SIGINT (graceful interruption).
+
+**Request:**
+```http
+POST /api/tasks/4811eece/interrupt
+```
+
+**Response (Success):**
+```http
+HTTP/1.1 202 Accepted
+```
+
+**Error Responses:**
+```http
+HTTP/1.1 404 Not Found
+Content-Type: text/plain
+
+Task not found
+```
+
+```http
+HTTP/1.1 409 Conflict
+Content-Type: text/plain
+
+Cannot interrupt task with current status
+```
+
+#### `POST /api/tasks/{id}/abort`
+
+Force terminate a task with SIGKILL (immediate termination).
+
+**Request:**
+```http
+POST /api/tasks/4811eece/abort
+```
+
+**Response (Success):**
+```http
+HTTP/1.1 202 Accepted
+```
+
+**Error Responses:**
+```http
+HTTP/1.1 404 Not Found
+Content-Type: text/plain
+
+Task not found
+```
+
+```http
+HTTP/1.1 409 Conflict
+Content-Type: text/plain
+
+Cannot abort task with current status
+```
+
+#### `POST /api/tasks/{id}/retry`
+
+Retry a failed, stopped, or aborted task with a new message.
+
+**Request:**
+```http
+POST /api/tasks/4811eece/retry
+Content-Type: application/json
+
+{
+  "message": "try again with different approach"
+}
+```
+
+**Response (Success):**
+```http
+HTTP/1.1 202 Accepted
+```
+
+**Error Responses:**
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: text/plain
+
+Message is required
+```
+
+```http
+HTTP/1.1 404 Not Found
+Content-Type: text/plain
+
+Task not found
+```
+
+```http
+HTTP/1.1 409 Conflict
+Content-Type: text/plain
+
+Cannot retry task with current status
+```
+
+#### `PATCH /api/tasks/{id}`
+
+Update task metadata (title, description, tags, priority).
+
+**Request:**
+```http
+PATCH /api/tasks/4811eece
+Content-Type: application/json
+
+{
+  "title": "Python Hello World Task",
+  "description": "Create a simple hello world program in Python",
+  "tags": ["python", "beginner", "hello-world"],
+  "priority": "medium"
+}
+```
+
+**Response (Success):**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "id": "4811eece",
+  "thread_id": "T-4a7e2c82-d080-4128-acea-e00a04e4f02e",
+  "status": "running",
+  "started": "2025-06-04T16:18:19.118703147-07:00",
+  "log_file": "logs/worker-4811eece.log",
+  "title": "Python Hello World Task",
+  "description": "Create a simple hello world program in Python",
+  "tags": ["python", "beginner", "hello-world"],
+  "priority": "medium"
+}
+```
+
+**Error Responses:**
+```http
+HTTP/1.1 404 Not Found
+Content-Type: text/plain
+
+Task not found
+```
+
+#### `DELETE /api/tasks/{id}`
+
+Delete a task and clean up its resources.
+
+**Request:**
+```http
+DELETE /api/tasks/4811eece
+```
+
+**Response (Success):**
+```http
+HTTP/1.1 204 No Content
+```
+
+**Error Responses:**
+```http
+HTTP/1.1 404 Not Found
+Content-Type: text/plain
+
+Task not found
+```
+
+#### `POST /api/tasks/{id}/merge`
+
+Merge task branch (Git integration placeholder).
+
+**Request:**
+```http
+POST /api/tasks/4811eece/merge
+```
+
+**Response:**
+```http
+HTTP/1.1 202 Accepted
+Content-Type: text/plain
+
+TODO: Implement Git merge functionality
+```
+
+#### `POST /api/tasks/{id}/delete-branch`
+
+Delete task branch (Git integration placeholder).
+
+**Request:**
+```http
+POST /api/tasks/4811eece/delete-branch
+```
+
+**Response:**
+```http
+HTTP/1.1 202 Accepted
+Content-Type: text/plain
+
+TODO: Implement Git branch deletion
+```
+
+#### `POST /api/tasks/{id}/create-pr`
+
+Create pull request for task (Git integration placeholder).
+
+**Request:**
+```http
+POST /api/tasks/4811eece/create-pr
+```
+
+**Response:**
+```http
+HTTP/1.1 202 Accepted
+Content-Type: text/plain
+
+TODO: Implement Git PR creation
+```
+
+---
+
+### Thread Messages
+
+#### `GET /api/tasks/{id}/thread`
+
+Retrieve conversation thread messages for a specific task.
+
+**Request:**
+```http
+GET /api/tasks/4811eece/thread
+GET /api/tasks/4811eece/thread?limit=20&offset=10
+```
+
+**Query Parameters:**
+- `limit` (optional, integer): Number of messages to return (1-100, default: 50)
+- `offset` (optional, integer): Number of messages to skip (default: 0)
+
+**Response:**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "messages": [
+    {
+      "id": "msg-1a2b3c4d",
+      "type": "user",
+      "content": "write a hello world program in Python",
+      "timestamp": "2025-06-04T16:18:19.118703147-07:00",
+      "metadata": null
+    },
+    {
+      "id": "msg-5e6f7g8h",
+      "type": "assistant",
+      "content": "I'll create a simple Python hello world program for you.",
+      "timestamp": "2025-06-04T16:18:20.234567890-07:00",
+      "metadata": {
+        "tool": "file_creator",
+        "model": "gpt-4"
+      }
+    },
+    {
+      "id": "msg-9i0j1k2l",
+      "type": "system",
+      "content": "Task completed successfully",
+      "timestamp": "2025-06-04T16:18:25.345678901-07:00",
+      "metadata": null
+    }
+  ],
+  "has_more": false,
+  "total": 3
+}
+```
+
+**Message Object Structure:**
+- `id` (string): Unique message identifier
+- `type` (string): Message type (`user` | `assistant` | `system` | `tool`)
+- `content` (string): Message content
+- `timestamp` (string): ISO 8601 timestamp when message was created
+- `metadata` (object, optional): Additional message metadata
+
+**Error Responses:**
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: text/plain
+
+Task ID is required
+```
+
+```http
+HTTP/1.1 500 Internal Server Error
+Content-Type: text/plain
+
+Failed to retrieve thread messages
+```
+
 ---
 
 ### Log Retrieval
@@ -407,6 +703,33 @@ Sent in real-time as new log lines are written to task log files.
 - Any time a new line is written to a task's log file
 - Real-time streaming of Amp output
 
+#### Thread Message Events
+
+Sent in real-time when new messages are added to a task's conversation thread.
+
+**Event Structure:**
+```json
+{
+  "type": "thread_message",
+  "data": {
+    "id": "msg-5e6f7g8h",
+    "type": "assistant",
+    "content": "I'll create a simple Python hello world program for you.",
+    "timestamp": "2025-06-04T16:18:20.234567890-07:00",
+    "metadata": {
+      "tool": "file_creator",
+      "model": "gpt-4"
+    }
+  }
+}
+```
+
+**When Triggered:**
+- New user messages are sent to tasks
+- Assistant responses are generated
+- System messages are created
+- Tool outputs are recorded
+
 ---
 
 ## Error Handling
@@ -447,6 +770,29 @@ Message is required
 
 - `running`: Task is currently executing
 - `stopped`: Task has been stopped (either manually or completed)
+- `interrupted`: Task was gracefully interrupted with SIGINT
+- `aborted`: Task was forcefully terminated with SIGKILL
+- `failed`: Task encountered an error and failed
+- `completed`: Task finished successfully
+
+### Task State Transitions
+
+The task status follows a state machine with allowed transitions:
+
+**From `running`:**
+- → `stopped` (via stop endpoint or natural completion)
+- → `interrupted` (via interrupt endpoint)
+- → `aborted` (via abort endpoint)
+- → `completed` (natural successful completion)
+- → `failed` (error during execution)
+
+**From `stopped`, `interrupted`, `aborted`, `failed`:**
+- → `running` (via retry endpoint)
+
+**From `completed`:**
+- → `running` (via retry endpoint for re-execution)
+
+Invalid state transitions will return `409 Conflict` with an appropriate error message.
 
 ### Timestamp Format
 
@@ -577,6 +923,9 @@ const connectWebSocket = () => {
       case 'log':
         handleLogEvent(data.data);
         break;
+      case 'thread_message':
+        handleThreadMessage(data.data);
+        break;
       default:
         console.log('Unknown event type:', data.type);
     }
@@ -606,6 +955,77 @@ const fetchLogs = async (taskId, tail = null) => {
   
   return await response.text();
 };
+```
+
+#### Task Control Operations
+```javascript
+const interruptTask = async (taskId) => {
+  const response = await fetch(`/api/tasks/${taskId}/interrupt`, {
+    method: 'POST',
+  });
+  
+  if (!response.ok) {
+    const errorMessage = await response.text();
+    throw new Error(`Failed to interrupt task (${response.status}): ${errorMessage}`);
+  }
+};
+
+const retryTask = async (taskId, message) => {
+  const response = await fetch(`/api/tasks/${taskId}/retry`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message }),
+  });
+  
+  if (!response.ok) {
+    const errorMessage = await response.text();
+    throw new Error(`Failed to retry task (${response.status}): ${errorMessage}`);
+  }
+};
+
+const updateTaskMetadata = async (taskId, updates) => {
+  const response = await fetch(`/api/tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(updates),
+  });
+  
+  if (!response.ok) {
+    const errorMessage = await response.text();
+    throw new Error(`Failed to update task (${response.status}): ${errorMessage}`);
+  }
+  
+  return await response.json();
+};
+```
+
+#### Thread Messages
+```javascript
+const fetchThreadMessages = async (taskId, options = {}) => {
+  const { limit = 50, offset = 0 } = options;
+  
+  const params = new URLSearchParams();
+  if (limit) params.append('limit', limit.toString());
+  if (offset) params.append('offset', offset.toString());
+  
+  const response = await fetch(`/api/tasks/${taskId}/thread?${params}`);
+  
+  if (!response.ok) {
+    const errorMessage = await response.text();
+    throw new Error(`Failed to fetch thread messages (${response.status}): ${errorMessage}`);
+  }
+  
+  return await response.json(); // Returns { messages, has_more, total }
+};
+
+// Usage examples:
+// const allMessages = await fetchThreadMessages('4811eece');
+// const recentMessages = await fetchThreadMessages('4811eece', { limit: 20 });
+// const nextPage = await fetchThreadMessages('4811eece', { limit: 20, offset: 20 });
 ```
 
 ---
@@ -642,3 +1062,11 @@ The server includes basic CORS middleware. For production deployment, configure 
 7. **Response Consistency**: All API responses use standardized helpers ensuring consistent JSON formatting and error handling across all endpoints.
 
 8. **Error Recovery**: The server includes panic recovery middleware, ensuring stability even during unexpected errors.
+
+9. **Task Lifecycle**: Tasks follow a strict state machine with validated transitions. Use interrupt for graceful stops, abort for immediate termination, and retry for restarting failed tasks.
+
+10. **Thread Messages**: Each task maintains a conversation thread stored in JSONL format. Messages are paginated and delivered in real-time via WebSocket events.
+
+11. **Task Metadata**: Tasks support optional metadata (title, description, tags, priority) that can be updated via PATCH operations without affecting task execution.
+
+12. **Git Integration Placeholders**: Merge, delete-branch, and create-pr endpoints are implemented as stubs returning TODO messages, ready for future Git integration.
