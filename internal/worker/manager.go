@@ -97,7 +97,7 @@ func (m *Manager) StartWorker(message string) error {
 		PID:      cmd.Process.Pid,
 		LogFile:  logFile,
 		Started:  time.Now(),
-		Status:   "running",
+		Status:   StatusRunning,
 	}
 
 	// Save worker state
@@ -149,7 +149,7 @@ func (m *Manager) StopWorker(workerID string) error {
 		return fmt.Errorf("worker %s not found", workerID)
 	}
 
-	if worker.Status != "running" {
+	if worker.Status != StatusRunning {
 		return fmt.Errorf("worker %s is not running", workerID)
 	}
 
@@ -177,7 +177,7 @@ func (m *Manager) StopWorker(workerID string) error {
 	m.stopLogTailer(workerID)
 
 	// Update worker status
-	worker.Status = "stopped"
+	worker.Status = StatusStopped
 	workers[workerID] = worker
 
 	if err := m.saveWorkers(workers); err != nil {
@@ -199,13 +199,13 @@ func (m *Manager) ContinueWorker(workerID, message string) error {
 	}
 
 	// Check if process is actually running
-	if worker.Status == "running" && !m.checkProcessStatus(worker) {
-		worker.Status = "stopped"
+	if worker.Status == StatusRunning && !m.checkProcessStatus(worker) {
+		worker.Status = StatusStopped
 		workers[workerID] = worker
 		m.saveWorkers(workers)
 	}
 
-	if worker.Status != "running" {
+	if worker.Status != StatusRunning {
 		return fmt.Errorf("worker %s is not running", workerID)
 	}
 
@@ -232,6 +232,176 @@ func (m *Manager) ContinueWorker(workerID, message string) error {
 	return nil
 }
 
+// InterruptWorker interrupts a running worker with SIGINT
+func (m *Manager) InterruptWorker(workerID string) error {
+	workers, err := m.loadWorkers()
+	if err != nil {
+		return err
+	}
+
+	worker, exists := workers[workerID]
+	if !exists {
+		return fmt.Errorf("worker %s not found", workerID)
+	}
+
+	if !CanTransition(worker.Status, StatusInterrupted) {
+		return fmt.Errorf("cannot interrupt worker %s with status %s", workerID, worker.Status)
+	}
+
+	// Send SIGINT to the process group
+	if err := syscall.Kill(-worker.PID, syscall.SIGINT); err != nil {
+		// If process group kill fails, try individual process
+		process, findErr := os.FindProcess(worker.PID)
+		if findErr == nil {
+			// Try to signal individual process, but don't fail if it doesn't work
+			process.Signal(syscall.SIGINT)
+		}
+		// Continue even if signaling fails - the process might already be dead
+	}
+
+	// Update worker status
+	worker.Status = StatusInterrupted
+	workers[workerID] = worker
+
+	if err := m.saveWorkers(workers); err != nil {
+		return fmt.Errorf("failed to update worker state: %w", err)
+	}
+
+	return nil
+}
+
+// AbortWorker forcefully terminates a worker with SIGKILL
+func (m *Manager) AbortWorker(workerID string) error {
+	workers, err := m.loadWorkers()
+	if err != nil {
+		return err
+	}
+
+	worker, exists := workers[workerID]
+	if !exists {
+		return fmt.Errorf("worker %s not found", workerID)
+	}
+
+	if !CanTransition(worker.Status, StatusAborted) {
+		return fmt.Errorf("cannot abort worker %s with status %s", workerID, worker.Status)
+	}
+
+	// Force kill the process group
+	if err := syscall.Kill(-worker.PID, syscall.SIGKILL); err != nil {
+		// If process group kill fails, try individual process
+		process, findErr := os.FindProcess(worker.PID)
+		if findErr == nil {
+			// Try to kill individual process, but don't fail if it doesn't work
+			process.Kill()
+		}
+		// Continue even if killing fails - the process might already be dead
+	}
+
+	// Kill any remaining amp processes for this thread
+	m.killAmpProcesses(worker.ThreadID)
+
+	// Stop log tailer
+	m.stopLogTailer(workerID)
+
+	// Update worker status
+	worker.Status = StatusAborted
+	workers[workerID] = worker
+
+	if err := m.saveWorkers(workers); err != nil {
+		return fmt.Errorf("failed to update worker state: %w", err)
+	}
+
+	return nil
+}
+
+// RetryWorker starts a new worker instance for the same thread
+func (m *Manager) RetryWorker(workerID, message string) error {
+	workers, err := m.loadWorkers()
+	if err != nil {
+		return err
+	}
+
+	worker, exists := workers[workerID]
+	if !exists {
+		return fmt.Errorf("worker %s not found", workerID)
+	}
+
+	if !CanTransition(worker.Status, StatusRunning) {
+		return fmt.Errorf("cannot retry worker %s with status %s", workerID, worker.Status)
+	}
+
+	// Ensure any old processes are cleaned up
+	if worker.Status == StatusRunning {
+		m.killAmpProcesses(worker.ThreadID)
+	}
+
+	// Create the command to send message to the existing thread
+	cmd := exec.Command("bash", "-c", fmt.Sprintf(
+		"echo %q | %s threads continue %s",
+		message, m.ampBinaryPath, worker.ThreadID,
+	))
+
+	// Set the process group ID so we can kill the entire group
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// Append to existing log file
+	logFile, err := os.OpenFile(worker.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
+	// Start the process
+	if err := cmd.Start(); err != nil {
+		logFile.Close()
+		return fmt.Errorf("failed to retry worker: %w", err)
+	}
+
+	// Update worker with new PID and status
+	worker.PID = cmd.Process.Pid
+	worker.Status = StatusRunning
+	workers[workerID] = worker
+
+	// Save worker state
+	if err := m.saveWorkers(workers); err != nil {
+		// Kill the process if we can't save state
+		cmd.Process.Kill()
+		logFile.Close()
+		return fmt.Errorf("failed to save worker state: %w", err)
+	}
+
+	// Start log tailer if callback is set
+	if m.onLogLine != nil {
+		tailer := NewLogTailer(worker.LogFile, worker.ID, m.onLogLine)
+		if err := tailer.Start(context.Background()); err == nil {
+			m.tailersMu.Lock()
+			m.tailers[worker.ID] = tailer
+			m.tailersMu.Unlock()
+		}
+	}
+
+	// Monitor the process in the background
+	m.MonitorWorkerExit(worker.ID, cmd, func(workerID string) {
+		// Stop log tailer when worker exits
+		m.stopLogTailer(workerID)
+		
+		// Call the exit callback if set
+		if m.onWorkerExit != nil {
+			m.onWorkerExit(workerID)
+		}
+	})
+
+	// Close log file after starting monitoring
+	go func() {
+		defer logFile.Close()
+		cmd.Wait()
+	}()
+
+	return nil
+}
+
 func (m *Manager) ListWorkers() ([]*Worker, error) {
 	workers, err := m.loadWorkers()
 	if err != nil {
@@ -241,8 +411,8 @@ func (m *Manager) ListWorkers() ([]*Worker, error) {
 	// Update status for all workers by checking actual process status
 	updated := false
 	for id, worker := range workers {
-		if worker.Status == "running" && !m.checkProcessStatus(worker) {
-			worker.Status = "stopped"
+		if worker.Status == StatusRunning && !m.checkProcessStatus(worker) {
+			worker.Status = StatusStopped
 			workers[id] = worker
 			updated = true
 		}
@@ -278,7 +448,7 @@ func (m *Manager) ListWorkersWithFilter(statusFilter []string, startedBefore, st
 		}
 		
 		for _, worker := range allWorkers {
-			if statusSet[worker.Status] {
+			if statusSet[string(worker.Status)] {
 				filtered = append(filtered, worker)
 			}
 		}

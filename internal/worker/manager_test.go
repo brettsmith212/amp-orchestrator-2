@@ -48,7 +48,7 @@ fi
 	assert.Len(t, workers, 1)
 
 	worker := workers[0]
-	assert.Equal(t, "running", worker.Status)
+	assert.Equal(t, StatusRunning, worker.Status)
 	assert.Equal(t, "T-test-thread-123", worker.ThreadID)
 	assert.NotEmpty(t, worker.ID)
 	assert.Greater(t, worker.PID, 0)
@@ -127,7 +127,7 @@ fi
 	workers, err = manager.ListWorkers()
 	require.NoError(t, err)
 	require.Len(t, workers, 1)
-	assert.Equal(t, "stopped", workers[0].Status)
+	assert.Equal(t, StatusStopped, workers[0].Status)
 }
 
 func TestManager_StopWorker_NotFound(t *testing.T) {
@@ -189,4 +189,181 @@ echo "invalid-thread-id"
 // Test helper to create a command context that times out
 func createTestCommand(ctx context.Context, script string) *exec.Cmd {
 	return exec.CommandContext(ctx, "bash", "-c", script)
+}
+
+func TestManager_InterruptWorker(t *testing.T) {
+	// Create temporary directory for test
+	tmpDir, err := os.MkdirTemp("", "worker-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	manager := NewManager(tmpDir)
+	
+	// Create a test worker directly in the state file
+	testWorkers := map[string]*Worker{
+		"test-worker": {
+			ID:       "test-worker",
+			ThreadID: "T-test-123",
+			PID:      999999, // Use fake PID that doesn't exist
+			LogFile:  filepath.Join(tmpDir, "test.log"),
+			Started:  time.Now(),
+			Status:   StatusRunning,
+		},
+	}
+	
+	err = manager.SaveWorkersForTest(testWorkers, filepath.Join(tmpDir, "workers.json"))
+	require.NoError(t, err)
+	
+	// Test interrupt - expect error since PID doesn't exist, but state should still update
+	err = manager.InterruptWorker("test-worker")
+	// Don't require no error since fake PID causes signal failure
+	
+	// Verify status changed even though signal failed
+	workers, err := manager.loadWorkers()
+	require.NoError(t, err)
+	assert.Equal(t, StatusInterrupted, workers["test-worker"].Status)
+}
+
+func TestManager_InterruptWorker_NotFound(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "worker-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	manager := NewManager(tmpDir)
+	
+	err = manager.InterruptWorker("nonexistent")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestManager_InterruptWorker_InvalidTransition(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "worker-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	manager := NewManager(tmpDir)
+	
+	// Create a test worker in stopped state
+	testWorkers := map[string]*Worker{
+		"test-worker": {
+			ID:       "test-worker",
+			ThreadID: "T-test-123",
+			PID:      12345,
+			LogFile:  filepath.Join(tmpDir, "test.log"),
+			Started:  time.Now(),
+			Status:   StatusCompleted, // Cannot interrupt completed worker
+		},
+	}
+	
+	err = manager.SaveWorkersForTest(testWorkers, filepath.Join(tmpDir, "workers.json"))
+	require.NoError(t, err)
+	
+	err = manager.InterruptWorker("test-worker")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot interrupt")
+}
+
+func TestManager_AbortWorker(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "worker-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	manager := NewManager(tmpDir)
+	
+	testWorkers := map[string]*Worker{
+		"test-worker": {
+			ID:       "test-worker",
+			ThreadID: "T-test-123",
+			PID:      999999, // Use fake PID that doesn't exist
+			LogFile:  filepath.Join(tmpDir, "test.log"),
+			Started:  time.Now(),
+			Status:   StatusRunning,
+		},
+	}
+	
+	err = manager.SaveWorkersForTest(testWorkers, filepath.Join(tmpDir, "workers.json"))
+	require.NoError(t, err)
+	
+	err = manager.AbortWorker("test-worker")
+	// Don't require no error since fake PID causes signal failure
+	
+	workers, err := manager.loadWorkers()
+	require.NoError(t, err)
+	assert.Equal(t, StatusAborted, workers["test-worker"].Status)
+}
+
+func TestManager_RetryWorker(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "worker-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create a dummy script that simulates amp behavior
+	scriptPath := filepath.Join(tmpDir, "dummy-amp")
+	script := `#!/bin/bash
+if [ "$1" = "threads" ] && [ "$2" = "continue" ]; then
+	echo "Retry message: $(cat)"
+	exit 0
+fi
+`
+	err = os.WriteFile(scriptPath, []byte(script), 0755)
+	require.NoError(t, err)
+
+	manager := NewManager(tmpDir)
+	manager.ampBinaryPath = scriptPath
+	
+	// Create a stopped worker that can be retried
+	testWorkers := map[string]*Worker{
+		"test-worker": {
+			ID:       "test-worker",
+			ThreadID: "T-test-123",
+			PID:      12345, // Old PID
+			LogFile:  filepath.Join(tmpDir, "test.log"),
+			Started:  time.Now(),
+			Status:   StatusStopped,
+		},
+	}
+	
+	err = manager.SaveWorkersForTest(testWorkers, filepath.Join(tmpDir, "workers.json"))
+	require.NoError(t, err)
+	
+	// Create log file
+	_, err = os.Create(filepath.Join(tmpDir, "test.log"))
+	require.NoError(t, err)
+	
+	err = manager.RetryWorker("test-worker", "retry message")
+	require.NoError(t, err)
+	
+	workers, err := manager.loadWorkers()
+	require.NoError(t, err)
+	
+	worker := workers["test-worker"]
+	assert.Equal(t, StatusRunning, worker.Status)
+	assert.NotEqual(t, 12345, worker.PID) // PID should have changed
+}
+
+func TestManager_RetryWorker_InvalidTransition(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "worker-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	manager := NewManager(tmpDir)
+	
+	// Create a worker in an invalid state for retry (doesn't exist in our state machine)
+	testWorkers := map[string]*Worker{
+		"test-worker": {
+			ID:       "test-worker",
+			ThreadID: "T-test-123",
+			PID:      12345,
+			LogFile:  filepath.Join(tmpDir, "test.log"),
+			Started:  time.Now(),
+			Status:   WorkerStatus("invalid"), // Invalid status
+		},
+	}
+	
+	err = manager.SaveWorkersForTest(testWorkers, filepath.Join(tmpDir, "workers.json"))
+	require.NoError(t, err)
+	
+	err = manager.RetryWorker("test-worker", "retry message")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot retry")
 }

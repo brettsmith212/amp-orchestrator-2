@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -158,4 +160,97 @@ func TestStartTask_MissingMessage(t *testing.T) {
 	
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "Message is required")
+}
+
+func TestInterruptTask(t *testing.T) {
+tempDir := t.TempDir()
+manager := worker.NewManager(tempDir)
+h := hub.NewHub()
+go h.Run() // Start the hub in a goroutine
+	handler := NewTaskHandler(manager, h)
+
+// Create a test worker
+testWorkers := map[string]*worker.Worker{
+"test-worker": {
+ID:       "test-worker",
+ThreadID: "T-test-123",
+PID:      999999, // Use fake PID that doesn't exist
+LogFile:  filepath.Join(tempDir, "test.log"),
+Started:  time.Now(),
+Status:   worker.StatusRunning,
+},
+}
+
+err := manager.SaveWorkersForTest(testWorkers, filepath.Join(tempDir, "workers.json"))
+require.NoError(t, err)
+
+req := httptest.NewRequest("POST", "/api/tasks/test-worker/interrupt", nil)
+req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
+		URLParams: chi.RouteParams{
+  Keys:   []string{"id"},
+			Values: []string{"test-worker"},
+ },
+	}))
+	w := httptest.NewRecorder()
+
+	handler.InterruptTask(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code)
+}
+
+func TestInterruptTask_NotFound(t *testing.T) {
+tempDir := t.TempDir()
+manager := worker.NewManager(tempDir)
+h := hub.NewHub()
+go h.Run() // Start the hub in a goroutine
+	handler := NewTaskHandler(manager, h)
+
+req := httptest.NewRequest("POST", "/api/tasks/nonexistent/interrupt", nil)
+req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
+		URLParams: chi.RouteParams{
+  Keys:   []string{"id"},
+			Values: []string{"nonexistent"},
+ },
+}))
+	w := httptest.NewRecorder()
+
+	handler.InterruptTask(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "Task not found")
+}
+
+func TestAbortTask(t *testing.T) {
+tempDir := t.TempDir()
+manager := worker.NewManager(tempDir)
+h := hub.NewHub()
+go h.Run() // Start the hub in a goroutine
+	handler := NewTaskHandler(manager, h)
+
+testWorkers := map[string]*worker.Worker{
+"test-worker": {
+ID:       "test-worker",
+ThreadID: "T-test-123",
+PID:      999999, // Use fake PID that doesn't exist
+LogFile:  filepath.Join(tempDir, "test.log"),
+Started:  time.Now(),
+Status:   worker.StatusRunning,
+},
+}
+
+err := manager.SaveWorkersForTest(testWorkers, filepath.Join(tempDir, "workers.json"))
+require.NoError(t, err)
+
+req := httptest.NewRequest("POST", "/api/tasks/test-worker/abort", nil)
+req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
+		URLParams: chi.RouteParams{
+  Keys:   []string{"id"},
+			Values: []string{"test-worker"},
+ },
+	}))
+	w := httptest.NewRecorder()
+
+	handler.AbortTask(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code)
 }

@@ -59,11 +59,11 @@ func (h *TaskHandler) broadcastTaskAfterStop(taskID string) {
 	for _, worker := range workers {
 		if worker.ID == taskID {
 			task := TaskDTO{
-				ID:       worker.ID,
-				ThreadID: worker.ThreadID,
-				Status:   worker.Status,
-				Started:  worker.Started,
-				LogFile:  worker.LogFile,
+			ID:       worker.ID,
+			ThreadID: worker.ThreadID,
+			Status:   string(worker.Status),
+			Started:  worker.Started,
+			LogFile:  worker.LogFile,
 			}
 			h.broadcastTaskUpdate(task)
 			break
@@ -151,7 +151,7 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) error {
 		tasks[i] = TaskDTO{
 			ID:       worker.ID,
 			ThreadID: worker.ThreadID,
-			Status:   worker.Status,
+			Status:   string(worker.Status),
 			Started:  worker.Started,
 			LogFile:  worker.LogFile,
 		}
@@ -216,7 +216,7 @@ func (h *TaskHandler) StartTask(w http.ResponseWriter, r *http.Request) {
 	task := TaskDTO{
 		ID:       latestWorker.ID,
 		ThreadID: latestWorker.ThreadID,
-		Status:   latestWorker.Status,
+		Status:   string(latestWorker.Status),
 		Started:  latestWorker.Started,
 		LogFile:  latestWorker.LogFile,
 	}
@@ -292,6 +292,89 @@ func (h *TaskHandler) ContinueTask(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to continue task", http.StatusInternalServerError)
 		return
 	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// InterruptTask interrupts a running task with SIGINT
+func (h *TaskHandler) InterruptTask(w http.ResponseWriter, r *http.Request) {
+	workerID := chi.URLParam(r, "id")
+	
+	if err := h.manager.InterruptWorker(workerID); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Task not found", http.StatusNotFound)
+			return
+		}
+		if strings.Contains(err.Error(), "cannot interrupt") {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		http.Error(w, "Failed to interrupt task", http.StatusInternalServerError)
+		return
+	}
+
+	// Broadcast the task update after interrupting
+	h.broadcastTaskAfterStop(workerID)
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// AbortTask forcefully terminates a task with SIGKILL
+func (h *TaskHandler) AbortTask(w http.ResponseWriter, r *http.Request) {
+	workerID := chi.URLParam(r, "id")
+	
+	if err := h.manager.AbortWorker(workerID); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Task not found", http.StatusNotFound)
+			return
+		}
+		if strings.Contains(err.Error(), "cannot abort") {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		http.Error(w, "Failed to abort task", http.StatusInternalServerError)
+		return
+	}
+
+	// Broadcast the task update after aborting
+	h.broadcastTaskAfterStop(workerID)
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// RetryTask restarts a task with a new message
+func (h *TaskHandler) RetryTask(w http.ResponseWriter, r *http.Request) {
+	workerID := chi.URLParam(r, "id")
+	
+	var req struct {
+		Message string `json:"message"`
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	
+	if req.Message == "" {
+		http.Error(w, "Message is required", http.StatusBadRequest)
+		return
+	}
+	
+	if err := h.manager.RetryWorker(workerID, req.Message); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, "Task not found", http.StatusNotFound)
+			return
+		}
+		if strings.Contains(err.Error(), "cannot retry") {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		http.Error(w, "Failed to retry task", http.StatusInternalServerError)
+		return
+	}
+
+	// Broadcast the task update after retrying
+	h.broadcastTaskAfterStop(workerID)
 
 	w.WriteHeader(http.StatusAccepted)
 }

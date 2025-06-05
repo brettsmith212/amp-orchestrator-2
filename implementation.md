@@ -141,7 +141,7 @@
 
 ## Extended Task actions
 
-- [ ] Step 14: Add interrupt / abort / retry endpoints and state machine guard
+- [x] Step 14: Add interrupt / abort / retry endpoints and state machine guard
   - **Task**: define `AllowedTransitions`, extend WorkerManager to persist `status`.
   - **Description**: Covers PromptBar & retry workflows.
 

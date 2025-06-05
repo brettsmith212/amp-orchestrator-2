@@ -47,7 +47,7 @@ func main() {
 				}{
 					ID:       w.ID,
 					ThreadID: w.ThreadID,
-					Status:   w.Status,
+					Status:   string(w.Status),
 					Started:  w.Started,
 					LogFile:  w.LogFile,
 				}
