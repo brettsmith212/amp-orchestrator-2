@@ -8,6 +8,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/brettsmith212/amp-orchestrator-2/internal/hub"
 	"github.com/brettsmith212/amp-orchestrator-2/internal/worker"
+	"github.com/brettsmith212/amp-orchestrator-2/pkg/apierr"
+	"github.com/brettsmith212/amp-orchestrator-2/pkg/query"
+	"github.com/brettsmith212/amp-orchestrator-2/pkg/response"
 )
 
 // TaskHandler handles task-related API requests
@@ -92,17 +95,59 @@ func (h *TaskHandler) BroadcastLogEvent(logLine worker.LogLine) {
 	h.hub.Broadcast(eventJSON)
 }
 
-// ListTasks returns all tasks as JSON
-func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
-	workers, err := h.manager.ListWorkers()
+// ListTasks returns tasks with optional filtering, sorting, and pagination
+func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) error {
+	// Parse query parameters
+	taskQuery, err := query.ParseTaskQuery(r.URL.Query())
 	if err != nil {
-		http.Error(w, "Failed to list tasks", http.StatusInternalServerError)
-		return
+		return err
 	}
 
+	// Get filtered and sorted workers
+	workers, err := h.manager.ListWorkersWithFilter(
+		taskQuery.Status,
+		taskQuery.StartedBefore,
+		taskQuery.StartedAfter,
+		taskQuery.SortBy,
+		taskQuery.SortOrder,
+	)
+	if err != nil {
+		return apierr.WrapInternal(err, "Failed to list tasks")
+	}
+
+	// Apply cursor-based pagination
+	var paginatedWorkers []*worker.Worker
+	var startIndex int
+
+	if taskQuery.Cursor != "" {
+		cursorTime, cursorID, err := query.ParseCursor(taskQuery.Cursor)
+		if err != nil {
+			return err
+		}
+
+		// Find the starting position based on cursor
+		for i, w := range workers {
+			if w.Started.Equal(cursorTime) && w.ID == cursorID {
+				startIndex = i + 1
+				break
+			} else if (taskQuery.SortOrder == "desc" && w.Started.Before(cursorTime)) ||
+				(taskQuery.SortOrder == "asc" && w.Started.After(cursorTime)) {
+				startIndex = i
+				break
+			}
+		}
+	}
+
+	// Get the page of workers
+	endIndex := startIndex + taskQuery.Limit
+	if endIndex > len(workers) {
+		endIndex = len(workers)
+	}
+	paginatedWorkers = workers[startIndex:endIndex]
+
 	// Convert workers to DTOs
-	tasks := make([]TaskDTO, len(workers))
-	for i, worker := range workers {
+	tasks := make([]TaskDTO, len(paginatedWorkers))
+	for i, worker := range paginatedWorkers {
 		tasks[i] = TaskDTO{
 			ID:       worker.ID,
 			ThreadID: worker.ThreadID,
@@ -112,11 +157,20 @@ func (h *TaskHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(tasks); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
+	// Prepare response
+	resp := PaginatedTasksResponse{
+		Tasks:   tasks,
+		HasMore: endIndex < len(workers),
+		Total:   len(workers),
 	}
+
+	// Generate next cursor if there are more results
+	if resp.HasMore && len(paginatedWorkers) > 0 {
+		lastTask := paginatedWorkers[len(paginatedWorkers)-1]
+		resp.NextCursor = query.GenerateCursor(lastTask.ID, lastTask.Started)
+	}
+
+	return response.OK(w, resp)
 }
 
 // StartTask creates and starts a new task

@@ -27,15 +27,18 @@ func TestListTasks_EmptyManager(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/tasks", nil)
 	w := httptest.NewRecorder()
 
-	handler.ListTasks(w, req)
+	err := handler.ListTasks(w, req)
+	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	var tasks []TaskDTO
-	err := json.Unmarshal(w.Body.Bytes(), &tasks)
+	var response PaginatedTasksResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
-	assert.Empty(t, tasks)
+	assert.Empty(t, response.Tasks)
+	assert.Equal(t, 0, response.Total)
+	assert.False(t, response.HasMore)
 }
 
 func TestListTasks_WithWorkers(t *testing.T) {
@@ -75,17 +78,21 @@ func TestListTasks_WithWorkers(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/tasks", nil)
 	w := httptest.NewRecorder()
 
-	handler.ListTasks(w, req)
+	err = handler.ListTasks(w, req)
+	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
-	var tasks []TaskDTO
-	err = json.Unmarshal(w.Body.Bytes(), &tasks)
+	var response PaginatedTasksResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
-	assert.Len(t, tasks, 2)
+	assert.Len(t, response.Tasks, 2)
+	assert.Equal(t, 2, response.Total)
+	assert.False(t, response.HasMore)
 
 	// Sort tasks by ID for consistent testing
+	tasks := response.Tasks
 	if len(tasks) > 1 && tasks[0].ID > tasks[1].ID {
 		tasks[0], tasks[1] = tasks[1], tasks[0]
 	}

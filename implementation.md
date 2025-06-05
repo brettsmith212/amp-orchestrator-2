@@ -135,7 +135,7 @@
 
 ## Pagination & advanced task list
 
-- [ ] Step 13: Implement cursor pagination, filtering, sorting on GET /api/tasks
+- [x] Step 13: Implement cursor pagination, filtering, sorting on GET /api/tasks
   - **Task**: query-parser util, update handler, unit tests incl. edge cases.
   - **Description**: Matches UI contract exactly.
 

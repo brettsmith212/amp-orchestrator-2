@@ -40,3 +40,11 @@ type LogData struct {
 	Timestamp time.Time `json:"timestamp"`
 	Content   string    `json:"content"`
 }
+
+// PaginatedTasksResponse represents a paginated response for tasks
+type PaginatedTasksResponse struct {
+	Tasks      []TaskDTO `json:"tasks"`
+	NextCursor string    `json:"next_cursor,omitempty"`
+	HasMore    bool      `json:"has_more"`
+	Total      int       `json:"total"`
+}

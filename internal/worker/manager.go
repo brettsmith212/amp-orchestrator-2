@@ -262,6 +262,51 @@ func (m *Manager) ListWorkers() ([]*Worker, error) {
 	return result, nil
 }
 
+// ListWorkersWithFilter returns workers with filtering and sorting options
+func (m *Manager) ListWorkersWithFilter(statusFilter []string, startedBefore, startedAfter *time.Time, sortBy, sortOrder string) ([]*Worker, error) {
+	allWorkers, err := m.ListWorkers()
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply status filter
+	var filtered []*Worker
+	if len(statusFilter) > 0 {
+		statusSet := make(map[string]bool)
+		for _, status := range statusFilter {
+			statusSet[status] = true
+		}
+		
+		for _, worker := range allWorkers {
+			if statusSet[worker.Status] {
+				filtered = append(filtered, worker)
+			}
+		}
+	} else {
+		filtered = allWorkers
+	}
+
+	// Apply time filters
+	if startedBefore != nil || startedAfter != nil {
+		var timeFiltered []*Worker
+		for _, worker := range filtered {
+			if startedBefore != nil && worker.Started.After(*startedBefore) {
+				continue
+			}
+			if startedAfter != nil && worker.Started.Before(*startedAfter) {
+				continue
+			}
+			timeFiltered = append(timeFiltered, worker)
+		}
+		filtered = timeFiltered
+	}
+
+	// Sort workers
+	m.sortWorkers(filtered, sortBy, sortOrder)
+
+	return filtered, nil
+}
+
 func (m *Manager) createThread() (string, error) {
 	cmd := exec.Command(m.ampBinaryPath, "threads", "new")
 	output, err := cmd.Output()
@@ -361,4 +406,45 @@ func (m *Manager) SaveWorkersForTest(workers map[string]*Worker, stateFile strin
 	defer func() { m.stateFile = originalStateFile }()
 	
 	return m.saveWorkers(workers)
+}
+
+// sortWorkers sorts a slice of workers based on the given criteria
+func (m *Manager) sortWorkers(workers []*Worker, sortBy, sortOrder string) {
+	if len(workers) <= 1 {
+		return
+	}
+
+	// Use a custom sort function
+	for i := 0; i < len(workers)-1; i++ {
+		for j := i + 1; j < len(workers); j++ {
+			var shouldSwap bool
+			
+			switch sortBy {
+			case "id":
+				if sortOrder == "asc" {
+					shouldSwap = workers[i].ID > workers[j].ID
+				} else {
+					shouldSwap = workers[i].ID < workers[j].ID
+				}
+			case "status":
+				if sortOrder == "asc" {
+					shouldSwap = workers[i].Status > workers[j].Status
+				} else {
+					shouldSwap = workers[i].Status < workers[j].Status
+				}
+			case "started":
+				fallthrough
+			default:
+				if sortOrder == "asc" {
+					shouldSwap = workers[i].Started.After(workers[j].Started)
+				} else {
+					shouldSwap = workers[i].Started.Before(workers[j].Started)
+				}
+			}
+			
+			if shouldSwap {
+				workers[i], workers[j] = workers[j], workers[i]
+			}
+		}
+	}
 }

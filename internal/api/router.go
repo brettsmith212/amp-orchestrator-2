@@ -5,6 +5,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/brettsmith212/amp-orchestrator-2/internal/hub"
+	errormw "github.com/brettsmith212/amp-orchestrator-2/internal/middleware"
 )
 
 func NewRouter(taskHandler *TaskHandler, h *hub.Hub) *chi.Mux {
@@ -24,7 +25,7 @@ func NewRouter(taskHandler *TaskHandler, h *hub.Hub) *chi.Mux {
 	wsHandler := NewWSHandler(h)
 	
 	r.Route("/api", func(r chi.Router) {
-		r.Get("/tasks", taskHandler.ListTasks)
+		r.Get("/tasks", errormw.Error(taskHandler.ListTasks))
 		r.Post("/tasks", taskHandler.StartTask)
 		r.Post("/tasks/{id}/stop", taskHandler.StopTask)
 		r.Post("/tasks/{id}/continue", taskHandler.ContinueTask)

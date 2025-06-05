@@ -40,35 +40,57 @@ ok
 
 #### `GET /api/tasks`
 
-Retrieve all tasks.
+Retrieve tasks with optional filtering, sorting, and pagination.
 
 **Request:**
 ```http
 GET /api/tasks
+GET /api/tasks?limit=10&status=running&sort_by=started&sort_order=desc
+GET /api/tasks?cursor=1672531200_abc123&limit=20
 ```
+
+**Query Parameters:**
+- `limit` (optional, integer): Number of tasks to return (1-100, default: 50)
+- `cursor` (optional, string): Cursor for pagination (from previous response)
+- `status` (optional, string): Filter by status (`running`, `stopped`, or comma-separated list)
+- `started_before` (optional, RFC3339): Filter tasks started before this timestamp
+- `started_after` (optional, RFC3339): Filter tasks started after this timestamp
+- `sort_by` (optional, string): Sort field (`started`, `status`, `id`, default: `started`)
+- `sort_order` (optional, string): Sort direction (`asc`, `desc`, default: `desc`)
 
 **Response:**
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
 
-[
-  {
-    "id": "49bb7b72",
-    "thread_id": "T-87247d00-6028-4815-a33b-62b3a155faa9",
-    "status": "running",
-    "started": "2025-06-04T16:14:07.975328556-07:00",
-    "log_file": "logs/worker-49bb7b72.log"
-  },
-  {
-    "id": "83d660b7",
-    "thread_id": "T-6eb1a877-b8b0-4cbb-83ce-481c36ca2231", 
-    "status": "stopped",
-    "started": "2025-06-04T16:15:14.496200845-07:00",
-    "log_file": "logs/worker-83d660b7.log"
-  }
-]
+{
+  "tasks": [
+    {
+      "id": "49bb7b72",
+      "thread_id": "T-87247d00-6028-4815-a33b-62b3a155faa9",
+      "status": "running",
+      "started": "2025-06-04T16:14:07.975328556-07:00",
+      "log_file": "logs/worker-49bb7b72.log"
+    },
+    {
+      "id": "83d660b7",
+      "thread_id": "T-6eb1a877-b8b0-4cbb-83ce-481c36ca2231", 
+      "status": "stopped",
+      "started": "2025-06-04T16:15:14.496200845-07:00",
+      "log_file": "logs/worker-83d660b7.log"
+    }
+  ],
+  "next_cursor": "1672531200_abc123",
+  "has_more": true,
+  "total": 45
+}
 ```
+
+**Response Structure:**
+- `tasks` (array): Array of task objects matching the query
+- `next_cursor` (string, optional): Cursor for the next page (only present if `has_more` is true)
+- `has_more` (boolean): Whether there are more results available
+- `total` (integer): Total number of tasks matching the filter criteria
 
 **Task Object Structure:**
 - `id` (string): Unique task identifier (8-character hex)
@@ -499,6 +521,45 @@ const createTask = async (message) => {
   
   return await response.json();
 };
+```
+
+#### Fetching Tasks with Pagination and Filtering
+```javascript
+const fetchTasks = async (options = {}) => {
+  const {
+    limit = 20,
+    cursor,
+    status,
+    startedBefore,
+    startedAfter,
+    sortBy = 'started',
+    sortOrder = 'desc'
+  } = options;
+  
+  const params = new URLSearchParams();
+  if (limit) params.append('limit', limit.toString());
+  if (cursor) params.append('cursor', cursor);
+  if (status) params.append('status', Array.isArray(status) ? status.join(',') : status);
+  if (startedBefore) params.append('started_before', startedBefore);
+  if (startedAfter) params.append('started_after', startedAfter);
+  if (sortBy) params.append('sort_by', sortBy);
+  if (sortOrder) params.append('sort_order', sortOrder);
+  
+  const response = await fetch(`/api/tasks?${params}`);
+  
+  if (!response.ok) {
+    const errorMessage = await response.text();
+    throw new Error(`Failed to fetch tasks (${response.status}): ${errorMessage}`);
+  }
+  
+  return await response.json(); // Returns { tasks, next_cursor, has_more, total }
+};
+
+// Usage examples:
+// const allTasks = await fetchTasks();
+// const runningTasks = await fetchTasks({ status: 'running' });
+// const recentTasks = await fetchTasks({ limit: 10, sortBy: 'started', sortOrder: 'desc' });
+// const nextPage = await fetchTasks({ cursor: previousResponse.next_cursor });
 ```
 
 #### WebSocket Connection
