@@ -101,8 +101,7 @@ func (p *AmpLogParser) ParseLine(line string) {
 func (p *AmpLogParser) updateThreadState(thread *Thread, timestamp time.Time) {
 	p.latestThread = thread
 	p.lastThreadUpdate = timestamp
-	// Reset processed flag when we get new thread data
-	p.conversationProcessed = false
+	// Don't reset processed flag - we only want to process once at the end
 }
 
 // ProcessFinalConversation processes the complete conversation when amp is done
