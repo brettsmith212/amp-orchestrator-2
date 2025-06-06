@@ -18,7 +18,8 @@ type Worker struct {
 	ID          string       `json:"id"`
 	ThreadID    string       `json:"thread_id"`
 	PID         int          `json:"pid"`
-	LogFile     string       `json:"log_file"`
+	LogFile     string       `json:"log_file"`     // Stdout/stderr log file
+	AmpLogFile  string       `json:"amp_log_file"` // Amp internal log file
 	Started     time.Time    `json:"started"`
 	Status      WorkerStatus `json:"status"`
 	Title       string       `json:"title,omitempty"`       // User-friendly task name

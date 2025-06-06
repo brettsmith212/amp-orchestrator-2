@@ -5,11 +5,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/brettsmith212/amp-orchestrator-2/internal/worker"
+	"github.com/spf13/cobra"
 )
 
-func main() {
+func old() {
 	var rootCmd = &cobra.Command{
 		Use:   "amp-orchestrator",
 		Short: "Orchestrate amp CLI instances",
@@ -121,5 +121,3 @@ func listCmd() *cobra.Command {
 		},
 	}
 }
-
-

@@ -92,6 +92,9 @@ func main() {
 				break
 			}
 		}
+		
+		// Process stopped workers to generate thread messages
+		manager.ProcessStoppedWorkers()
 	})
 	
 	router := api.NewRouter(taskHandler, h)

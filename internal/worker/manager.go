@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,9 +24,10 @@ type Manager struct {
 	onWorkerExit  func(workerID string) // Callback when worker exits
 	onLogLine     func(LogLine)         // Callback for log lines
 	onThreadMsg   func(workerID string, message ThreadMessage) // Callback for thread messages
-	tailers       map[string]*LogTailer // Active log tailers by worker ID
+	tailers       map[string]*LogTailerWithParser // Active log tailers by worker ID
 	tailersMu     sync.RWMutex          // Protects tailers map
 	threadStorage *ThreadStorage        // Thread message storage
+	processedWorkers map[string]bool    // Track which workers have had final processing
 }
 
 func NewManager(logDir string) *Manager {
@@ -43,8 +45,9 @@ func NewManager(logDir string) *Manager {
 		onWorkerExit:  nil,   // Will be set via SetExitCallback
 		onLogLine:     nil,   // Will be set via SetLogCallback
 		onThreadMsg:   nil,   // Will be set via SetThreadMessageCallback
-		tailers:       make(map[string]*LogTailer),
+		tailers:       make(map[string]*LogTailerWithParser),
 		threadStorage: NewThreadStorage(filepath.Join(logDir, "threads")),
+		processedWorkers: make(map[string]bool),
 	}
 }
 
@@ -73,30 +76,31 @@ func (m *Manager) StartWorker(message string) error {
 	// Generate worker ID
 	workerID := uuid.New().String()[:8]
 
-	// Setup log file
-	logFile := filepath.Join(m.logDir, fmt.Sprintf("worker-%s.log", workerID))
+	// Setup log files
+	stdoutLogFile := filepath.Join(m.logDir, fmt.Sprintf("worker-%s.log", workerID))
+	ampLogFile := filepath.Join(m.logDir, fmt.Sprintf("worker-%s-amp.log", workerID))
 
-	// Create the command to pipe message to amp
+	// Create the command to pipe message to amp with internal logging and debug level
 	cmd := exec.Command("bash", "-c", fmt.Sprintf(
-		"echo %q | %s threads continue %s",
-		message, m.ampBinaryPath, threadID,
+		"echo %q | %s --log-file %s --log-level=debug threads continue %s",
+		message, m.ampBinaryPath, ampLogFile, threadID,
 	))
 
 	// Set the process group ID so we can kill the entire group
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Capture both stdout and stderr to the log file
-	logFileHandle, err := os.Create(logFile)
+	// Capture both stdout and stderr to the stdout log file
+	stdoutLogFileHandle, err := os.Create(stdoutLogFile)
 	if err != nil {
-		return fmt.Errorf("failed to create log file: %w", err)
+		return fmt.Errorf("failed to create stdout log file: %w", err)
 	}
 
-	cmd.Stdout = logFileHandle
-	cmd.Stderr = logFileHandle
+	cmd.Stdout = stdoutLogFileHandle
+	cmd.Stderr = stdoutLogFileHandle
 
 	// Start the process
 	if err := cmd.Start(); err != nil {
-		logFileHandle.Close()
+		stdoutLogFileHandle.Close()
 		return fmt.Errorf("failed to start worker: %w", err)
 	}
 
@@ -104,22 +108,37 @@ func (m *Manager) StartWorker(message string) error {
 		ID:       workerID,
 		ThreadID: threadID,
 		PID:      cmd.Process.Pid,
-		LogFile:  logFile,
+		LogFile:  stdoutLogFile,  // Keep the stdout log file in the worker struct
 		Started:  time.Now(),
 		Status:   StatusRunning,
+		// Add amp log file path for internal use
+		AmpLogFile: ampLogFile,
 	}
 
 	// Save worker state
 	if err := m.saveWorker(worker); err != nil {
 		// Kill the process if we can't save state
 		cmd.Process.Kill()
-		logFileHandle.Close()
+		stdoutLogFileHandle.Close()
 		return fmt.Errorf("failed to save worker state: %w", err)
 	}
 
-	// Start log tailer if callback is set
-	if m.onLogLine != nil {
-		tailer := NewLogTailer(logFile, worker.ID, m.onLogLine)
+	// Start log tailer with amp parsing if callbacks are set
+	if m.onLogLine != nil || m.onThreadMsg != nil {
+		// Create thread message callback that stores and broadcasts
+		threadMsgCallback := func(message ThreadMessage) {
+			// Store the message
+			if err := m.threadStorage.AppendMessage(worker.ID, message); err != nil {
+				return
+			}
+			
+			// Broadcast the message if callback is set
+			if m.onThreadMsg != nil {
+				m.onThreadMsg(worker.ID, message)
+			}
+		}
+		
+		tailer := NewLogTailerWithParser(worker.AmpLogFile, worker.ID, m.onLogLine, threadMsgCallback)
 		if err := tailer.Start(context.Background()); err == nil {
 			m.tailersMu.Lock()
 			m.tailers[worker.ID] = tailer
@@ -138,9 +157,9 @@ func (m *Manager) StartWorker(message string) error {
 		}
 	})
 
-	// Close log file after starting monitoring
+	// Close stdout log file after starting monitoring
 	go func() {
-		defer logFileHandle.Close()
+		defer stdoutLogFileHandle.Close()
 		cmd.Wait()
 	}()
 
@@ -381,9 +400,22 @@ func (m *Manager) RetryWorker(workerID, message string) error {
 		return fmt.Errorf("failed to save worker state: %w", err)
 	}
 
-	// Start log tailer if callback is set
-	if m.onLogLine != nil {
-		tailer := NewLogTailer(worker.LogFile, worker.ID, m.onLogLine)
+	// Start log tailer for both stdout and amp logs
+	if m.onLogLine != nil || m.onThreadMsg != nil {
+		// Thread message callback
+		threadMsgCallback := func(message ThreadMessage) {
+			// Append to thread storage
+			if err := m.threadStorage.AppendMessage(worker.ID, message); err != nil {
+				return
+			}
+			
+			// Broadcast the message if callback is set
+			if m.onThreadMsg != nil {
+				m.onThreadMsg(worker.ID, message)
+			}
+		}
+		
+		tailer := NewLogTailerWithParser(worker.AmpLogFile, worker.ID, m.onLogLine, threadMsgCallback)
 		if err := tailer.Start(context.Background()); err == nil {
 			m.tailersMu.Lock()
 			m.tailers[worker.ID] = tailer
@@ -644,6 +676,8 @@ func (m *Manager) stopLogTailer(workerID string) {
 	defer m.tailersMu.Unlock()
 	
 	if tailer, exists := m.tailers[workerID]; exists {
+		// Process the final conversation before stopping
+		tailer.ProcessFinalConversation()
 		tailer.Stop()
 		delete(m.tailers, workerID)
 	}
@@ -656,6 +690,73 @@ func (m *Manager) SaveWorkersForTest(workers map[string]*Worker, stateFile strin
 	defer func() { m.stateFile = originalStateFile }()
 	
 	return m.saveWorkers(workers)
+}
+
+// ProcessStoppedWorkers processes final conversations for all stopped workers that haven't been processed yet
+func (m *Manager) ProcessStoppedWorkers() error {
+	workers, err := m.loadWorkers()
+	if err != nil {
+		return err
+	}
+	
+	for workerID, worker := range workers {
+		// Only process stopped workers that haven't been processed yet
+		if worker.Status == StatusStopped && !m.processedWorkers[workerID] {
+			// Check if this worker has a tailer (and thus amp logs to process)
+			m.tailersMu.RLock()
+			tailer, hasTailer := m.tailers[workerID]
+			m.tailersMu.RUnlock()
+			
+			if hasTailer {
+				// Process the final conversation
+				tailer.ProcessFinalConversation()
+				m.processedWorkers[workerID] = true
+			} else {
+				// No tailer, but check if amp log file exists and process manually
+				if worker.AmpLogFile != "" {
+					if err := m.processWorkerAmpLog(workerID, worker.AmpLogFile); err == nil {
+						m.processedWorkers[workerID] = true
+					}
+				}
+			}
+		}
+	}
+	
+	return nil
+}
+
+// processWorkerAmpLog manually processes an amp log file for a worker
+func (m *Manager) processWorkerAmpLog(workerID, ampLogFile string) error {
+	// Create a temporary parser to process the log file
+	parser := NewAmpLogParser(workerID, func(msg ThreadMessage) {
+		// Store the message
+		if err := m.threadStorage.AppendMessage(workerID, msg); err != nil {
+			// Log error but continue
+			return
+		}
+		
+		// Broadcast the message if callback is set
+		if m.onThreadMsg != nil {
+			m.onThreadMsg(workerID, msg)
+		}
+	})
+	
+	// Read and process the entire amp log file
+	file, err := os.Open(ampLogFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		parser.ParseLine(scanner.Text())
+	}
+	
+	// Process the final conversation
+	parser.ProcessFinalConversation()
+	
+	return nil
 }
 
 // AppendThreadMessage appends a message to the thread and optionally broadcasts it
@@ -683,6 +784,9 @@ func (m *Manager) AppendThreadMessage(workerID string, messageType MessageType, 
 
 // GetThreadMessages retrieves thread messages for a worker with pagination
 func (m *Manager) GetThreadMessages(workerID string, limit, offset int) ([]ThreadMessage, error) {
+	// Process any stopped workers that haven't been processed yet (async)
+	go m.ProcessStoppedWorkers()
+	
 	return m.threadStorage.ReadMessages(workerID, limit, offset)
 }
 

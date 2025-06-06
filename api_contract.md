@@ -9,7 +9,7 @@ This document outlines the complete API contract for the Amp Orchestrator backen
 
 ## Authentication
 
-Currently no authentication is required. Future versions may implement JWT-based authentication.
+No authentication is required.
 
 ---
 
@@ -422,56 +422,7 @@ Content-Type: text/plain
 Task not found
 ```
 
-#### `POST /api/tasks/{id}/merge`
 
-Merge task branch (Git integration placeholder).
-
-**Request:**
-```http
-POST /api/tasks/4811eece/merge
-```
-
-**Response:**
-```http
-HTTP/1.1 202 Accepted
-Content-Type: text/plain
-
-TODO: Implement Git merge functionality
-```
-
-#### `POST /api/tasks/{id}/delete-branch`
-
-Delete task branch (Git integration placeholder).
-
-**Request:**
-```http
-POST /api/tasks/4811eece/delete-branch
-```
-
-**Response:**
-```http
-HTTP/1.1 202 Accepted
-Content-Type: text/plain
-
-TODO: Implement Git branch deletion
-```
-
-#### `POST /api/tasks/{id}/create-pr`
-
-Create pull request for task (Git integration placeholder).
-
-**Request:**
-```http
-POST /api/tasks/4811eece/create-pr
-```
-
-**Response:**
-```http
-HTTP/1.1 202 Accepted
-Content-Type: text/plain
-
-TODO: Implement Git PR creation
-```
 
 ---
 
@@ -1274,20 +1225,11 @@ const sendPing = (ws) => {
 // sendPing(ws);
 ```
 
----
 
-## Rate Limiting
-
-Currently no rate limiting is implemented. Future versions may include:
-- Request rate limits per IP
-- WebSocket connection limits
-- Task creation limits
-
----
 
 ## CORS
 
-The server includes basic CORS middleware. For production deployment, configure appropriate CORS policies for your frontend domain.
+The server includes CORS middleware that allows connections from any origin.
 
 ---
 
@@ -1315,10 +1257,8 @@ The server includes basic CORS middleware. For production deployment, configure 
 
 11. **Task Metadata**: Tasks support optional metadata (title, description, tags, priority) that can be updated via PATCH operations without affecting task execution.
 
-12. **Git Integration Placeholders**: Merge, delete-branch, and create-pr endpoints are implemented as stubs returning TODO messages, ready for future Git integration.
+12. **Enhanced WebSocket Protocol**: WebSocket connections support structured messaging with ping/pong for health monitoring, subscription filtering for selective event delivery, and automatic heartbeat/timeout management.
 
-13. **Enhanced WebSocket Protocol**: WebSocket connections support structured messaging with ping/pong for health monitoring, subscription filtering for selective event delivery, and automatic heartbeat/timeout management.
+13. **WebSocket Connection Health**: Server automatically disconnects inactive clients after 120 seconds and sends heartbeat messages every 45 seconds. Clients can send ping messages for round-trip time measurement.
 
-14. **WebSocket Connection Health**: Server automatically disconnects inactive clients after 120 seconds and sends heartbeat messages every 45 seconds. Clients can send ping messages for round-trip time measurement.
-
-15. **Message Filtering**: Clients can subscribe to specific message types or task IDs to reduce bandwidth and improve performance. Default behavior delivers all messages if no subscriptions are set.
+14. **Message Filtering**: Clients can subscribe to specific message types or task IDs to reduce bandwidth and improve performance. Default behavior delivers all messages if no subscriptions are set.
